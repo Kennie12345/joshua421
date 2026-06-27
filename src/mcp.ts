@@ -37,8 +37,8 @@ server.registerTool(
     description: 'Reflect on the day that passed, tying it back to God’s faithfulness, and deliver it.',
   },
   async () => {
-    const stone = await reflectOnDay(deps)
-    return { content: [{ type: 'text', text: `Reflection sent. Stone laid: ${stone.id}` }] }
+    const { reflection } = await reflectOnDay(deps)
+    return { content: [{ type: 'text', text: `${reflection.text}\n\n— also sent to your inbox. (Stone laid.)` }] }
   },
 )
 
@@ -49,7 +49,7 @@ server.registerTool(
   },
   async () => {
     const r = await lookBack(deps)
-    return { content: [{ type: 'text', text: r.text }] }
+    return { content: [{ type: 'text', text: `${r.text}\n\n— also sent to your inbox.` }] }
   },
 )
 
@@ -63,8 +63,12 @@ server.registerTool(
     if (events.length === 0) {
       return { content: [{ type: 'text', text: 'No upcoming events in the next 24 hours.' }] }
     }
-    const stone = await prepareForEvent(events[0], deps)
-    return { content: [{ type: 'text', text: `Prepared for "${events[0].title}". Stone laid: ${stone.id}` }] }
+    const { reflection } = await prepareForEvent(events[0], deps)
+    return {
+      content: [
+        { type: 'text', text: `Preparing for "${events[0].title}":\n\n${reflection.text}\n\n— also sent to your inbox. (Stone laid.)` },
+      ],
+    }
   },
 )
 

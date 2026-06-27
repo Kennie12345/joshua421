@@ -2,6 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { Deps, SourceEvent } from './deps'
 import type { Reflection, Stone } from './stone'
 
+/** What an act-flow returns: the stone laid + the (transient) reflection text. */
+export interface FlowResult {
+  stone: Stone
+  reflection: Reflection
+}
+
 /**
  * ISO local day (YYYY-MM-DD) for a Date. Uses local calendar fields so the
  * stone date, lookBack window, and the cairn's streak walk all agree on the
@@ -19,7 +25,7 @@ function isoDay(d: Date): string {
  * BEFORE — help bring a God-honouring posture into an upcoming event.
  * Reads nothing it shouldn't; reflects; delivers; lays one stone.
  */
-export async function prepareForEvent(event: SourceEvent, deps: Deps): Promise<Stone> {
+export async function prepareForEvent(event: SourceEvent, deps: Deps): Promise<FlowResult> {
   const r = await deps.reflect('before', { event })
   await deps.notify(r, { eventRef: event.id })
   const stone: Stone = {
@@ -30,14 +36,14 @@ export async function prepareForEvent(event: SourceEvent, deps: Deps): Promise<S
     eventRef: event.id,
   }
   await deps.cairn.addStone(stone)
-  return stone
+  return { stone, reflection: r }
 }
 
 /**
  * AFTER / end of day — reflect on the day that passed, tying it back to God's
  * faithfulness. Content is read live in deps.source and discarded.
  */
-export async function reflectOnDay(deps: Deps): Promise<Stone> {
+export async function reflectOnDay(deps: Deps): Promise<FlowResult> {
   const today = isoDay(deps.clock())
   const ctx = await deps.source.contextForDay(today)
   const r = await deps.reflect('after', ctx)
@@ -49,7 +55,7 @@ export async function reflectOnDay(deps: Deps): Promise<Stone> {
     status: 'shown-up',
   }
   await deps.cairn.addStone(stone)
-  return stone
+  return { stone, reflection: r }
 }
 
 /**
