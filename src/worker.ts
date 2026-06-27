@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './env'
 import cron from 'node-cron'
 import type { Deps } from './core/deps'
 import { lookBack, prepareForEvent, reflectOnDay } from './core/flows'

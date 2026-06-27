@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './env'
 import http from 'node:http'
 import { execFile } from 'node:child_process'
 import { google } from 'googleapis'

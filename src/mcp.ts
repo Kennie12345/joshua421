@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './env'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Deps } from './core/deps'
@@ -12,6 +12,15 @@ import { makeGoogleNotifier, makeGoogleSource } from './google'
  * engine flows, then exposes them as tools you can call from your own Claude.
  * No business logic of its own.
  */
+
+// Boot diagnostic — stderr only (shows in Claude Desktop's MCP log; never on
+// stdout, where it would corrupt the protocol). No secrets, just presence.
+console.error(
+  `[joshua421] boot · cwd=${process.cwd()} · db=${process.env.CAIRN_DB_PATH} · ` +
+    `anthropic=${process.env.ANTHROPIC_API_KEY ? 'set' : 'MISSING'} · ` +
+    `google=${process.env.GOOGLE_REFRESH_TOKEN ? 'set' : 'MISSING'}`,
+)
+
 const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
