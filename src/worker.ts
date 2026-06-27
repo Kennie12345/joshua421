@@ -7,11 +7,16 @@ import { makeClaudeReflector } from './claude'
 import { makeGoogleNotifier, makeGoogleSource } from './google'
 
 /**
- * ENTRYPOINT 2 — the always-on scheduled loop. Same engine, wired to a clock
- * instead of a human. Three levels of abstraction, kept separate:
- *   L1  the work      -> core/flows  (timing-blind)
- *   L2  the trigger   -> TRIGGERS    (the schedule as data)
- *   L3  the mechanism -> node-cron   (concrete; swap at the deploy tripwire)
+ * ENTRYPOINT 2 — the scheduled engine. Two ways to run, same jobs:
+ *
+ *   one-shot:  `worker <job>`   runs one job and exits → used by the launchd
+ *              StartCalendarInterval agents. Robust on a laptop that sleeps:
+ *              launchd runs a missed job on wake.
+ *   daemon:    `worker`         keeps node-cron alive in the foreground → handy
+ *              for `npm run worker` while developing.
+ *
+ * Three levels stay separate: the JOBS (the work, timing-blind), the SCHEDULE
+ * (when, as data), and the runner (launchd or node-cron).
  */
 const deps: Deps = {
   source: makeGoogleSource(),
@@ -21,32 +26,45 @@ const deps: Deps = {
   clock: () => new Date(),
 }
 
-/** L2 — the schedule as DATA. v1 implements wall-clock triggers only; the shape
- *  is meant to grow an `EventRelative` variant ("12h before each event") later. */
-interface Trigger {
-  id: string
-  cron: string // wall-clock, in the worker's timezone
-  run: (deps: Deps) => Promise<unknown>
-}
-
-const TRIGGERS: Trigger[] = [
-  {
-    id: 'morning-prepare',
-    cron: '0 7 * * *',
-    run: async (d) => {
-      const events = await d.source.upcomingEvents(24)
-      for (const event of events) await prepareForEvent(event, d)
-    },
+// L1 — the jobs. Each is timing-blind and named.
+const JOBS: Record<string, (d: Deps) => Promise<unknown>> = {
+  prepare: async (d) => {
+    const events = await d.source.upcomingEvents(24)
+    for (const event of events) await prepareForEvent(event, d)
   },
-  { id: 'evening-reflect', cron: '0 20 * * *', run: (d) => reflectOnDay(d) },
-  { id: 'weekly-look-back', cron: '0 19 * * 0', run: (d) => lookBack(d) },
-]
-
-// L3 — the mechanism. Reads triggers, fires flows.
-for (const trigger of TRIGGERS) {
-  cron.schedule(trigger.cron, () => {
-    void trigger.run(deps).catch((err) => console.error(`[${trigger.id}]`, err))
-  })
+  reflect: (d) => reflectOnDay(d),
+  'look-back': (d) => lookBack(d),
 }
 
-console.log(`joshua421 worker: ${TRIGGERS.length} triggers scheduled`)
+async function runJob(name: string): Promise<void> {
+  const fn = JOBS[name]
+  if (!fn) throw new Error(`unknown job "${name}". valid: ${Object.keys(JOBS).join(', ')}`)
+  console.log(`[joshua421] job start: ${name} @ ${new Date().toISOString()}`)
+  await fn(deps)
+  console.log(`[joshua421] job done:  ${name} @ ${new Date().toISOString()}`)
+}
+
+const job = process.argv[2]
+
+if (job) {
+  // One-shot mode (launchd).
+  runJob(job)
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(`[joshua421] job failed: ${job}`, err)
+      process.exit(1)
+    })
+} else {
+  // Daemon mode (node-cron). L2 — the schedule as data; L3 — the mechanism.
+  const SCHEDULE: { cron: string; job: string }[] = [
+    { cron: '0 7 * * *', job: 'prepare' },
+    { cron: '0 20 * * *', job: 'reflect' },
+    { cron: '0 19 * * 0', job: 'look-back' },
+  ]
+  for (const s of SCHEDULE) {
+    cron.schedule(s.cron, () => {
+      void runJob(s.job).catch((err) => console.error(`[joshua421] ${s.job}`, err))
+    })
+  }
+  console.log(`joshua421 worker (daemon): ${SCHEDULE.length} jobs scheduled`)
+}
