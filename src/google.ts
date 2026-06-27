@@ -115,9 +115,10 @@ export function makeGoogleNotifier(): Notify {
   return async (reflection, opts) => {
     const { gmail, calendar } = getClients()
 
-    const profile = await gmail.users.getProfile({ userId: 'me' })
-    const address = profile.data.emailAddress
-    if (!address) throw new Error('google notifier: could not resolve own address')
+    // Send-only Gmail scope — joshua421 never reads your inbox. Your own
+    // address comes from .env (GOOGLE_USER_EMAIL), not from a profile read.
+    const address = process.env.GOOGLE_USER_EMAIL
+    if (!address) throw new Error('google notifier: set GOOGLE_USER_EMAIL in .env')
 
     const headers = [
       `From: ${address}`,

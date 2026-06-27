@@ -4,3 +4,7 @@ dist/
 *.sqlite
 *.sqlite-journal
 .DS_Store
+
+# Tool-dropped Agent Skills — not part of this project
+.agents/
+skills-lock.json
