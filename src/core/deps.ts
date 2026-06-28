@@ -1,5 +1,5 @@
-import type { Cairn } from './cairn'
-import type { Reflection, StoneKind } from './stone'
+import type { Log } from './log'
+import type { Note, ReflectionKind } from './reflection'
 
 /** A calendar event, source-agnostic and content-light by design. */
 export interface SourceEvent {
@@ -11,7 +11,7 @@ export interface SourceEvent {
 
 /**
  * Material read LIVE from a source (calendar / diary / email) and used in the
- * moment, then discarded. Never persisted to the cairn.
+ * moment, then discarded. Never persisted to the log.
  */
 export interface SourceContext {
   event?: SourceEvent
@@ -28,11 +28,11 @@ export interface ReadSource {
   contextForDay(date: string): Promise<SourceContext>
 }
 
-/** Turns live context into a reflection. Implemented by the LLM. */
-export type Reflect = (kind: StoneKind, context: SourceContext) => Promise<Reflection>
+/** Turns live context into a note (the words offered). Implemented by the LLM. */
+export type Reflect = (kind: ReflectionKind, context: SourceContext) => Promise<Note>
 
-/** Delivers a reflection to where the person already is (email / calendar). */
-export type Notify = (reflection: Reflection, opts?: { eventRef?: string }) => Promise<void>
+/** Delivers a note to where the person already is (email / calendar). */
+export type Notify = (note: Note, opts?: { eventRef?: string }) => Promise<void>
 
 /** Injectable clock, so the flows are testable. */
 export type Clock = () => Date
@@ -42,6 +42,6 @@ export interface Deps {
   source: ReadSource
   reflect: Reflect
   notify: Notify
-  cairn: Cairn
+  log: Log
   clock: Clock
 }

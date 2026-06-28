@@ -2,7 +2,7 @@ import './env'
 import cron from 'node-cron'
 import type { Deps } from './core/deps'
 import { lookBack, prepareForEvent, reflectOnDay } from './core/flows'
-import { makeSqliteCairn } from './cairn-sqlite'
+import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
 import { makeGoogleNotifier, makeGoogleSource } from './google'
 
@@ -14,15 +14,12 @@ import { makeGoogleNotifier, makeGoogleSource } from './google'
  *              launchd runs a missed job on wake.
  *   daemon:    `worker`         keeps node-cron alive in the foreground → handy
  *              for `npm run worker` while developing.
- *
- * Three levels stay separate: the JOBS (the work, timing-blind), the SCHEDULE
- * (when, as data), and the runner (launchd or node-cron).
  */
 const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
-  cairn: makeSqliteCairn(),
+  log: makeSqliteLog(),
   clock: () => new Date(),
 }
 

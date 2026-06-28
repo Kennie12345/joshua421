@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Deps } from './core/deps'
 import { reflectOnDay, lookBack, prepareForEvent } from './core/flows'
-import { makeSqliteCairn } from './cairn-sqlite'
+import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
 import { makeGoogleNotifier, makeGoogleSource } from './google'
 
@@ -16,7 +16,7 @@ import { makeGoogleNotifier, makeGoogleSource } from './google'
 // Boot diagnostic — stderr only (shows in Claude Desktop's MCP log; never on
 // stdout, where it would corrupt the protocol). No secrets, just presence.
 console.error(
-  `[joshua421] boot · cwd=${process.cwd()} · db=${process.env.CAIRN_DB_PATH} · ` +
+  `[joshua421] boot · cwd=${process.cwd()} · db=${process.env.JOSHUA421_DB} · ` +
     `anthropic=${process.env.ANTHROPIC_API_KEY ? 'set' : 'MISSING'} · ` +
     `google=${process.env.GOOGLE_REFRESH_TOKEN ? 'set' : 'MISSING'}`,
 )
@@ -25,7 +25,7 @@ const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
-  cairn: makeSqliteCairn(),
+  log: makeSqliteLog(),
   clock: () => new Date(),
 }
 
@@ -33,40 +33,34 @@ const server = new McpServer({ name: 'joshua421', version: '0.1.0' })
 
 server.registerTool(
   'reflect_on_day',
-  {
-    description: 'Reflect on the day that passed, tying it back to God’s faithfulness, and deliver it.',
-  },
+  { description: "Reflect on the day that passed, tying it back to God's faithfulness, and deliver it." },
   async () => {
-    const { reflection } = await reflectOnDay(deps)
-    return { content: [{ type: 'text', text: `${reflection.text}\n\n— also sent to your inbox. (Stone laid.)` }] }
+    const { note } = await reflectOnDay(deps)
+    return { content: [{ type: 'text', text: `${note.text}\n\n— also sent to your inbox. (Reflection recorded.)` }] }
   },
 )
 
 server.registerTool(
   'look_back',
-  {
-    description: 'Look back over the cairn — "look how faithful God has been."',
-  },
+  { description: 'Look back over your reflections — "look how faithful God has been."' },
   async () => {
-    const r = await lookBack(deps)
-    return { content: [{ type: 'text', text: `${r.text}\n\n— also sent to your inbox.` }] }
+    const note = await lookBack(deps)
+    return { content: [{ type: 'text', text: `${note.text}\n\n— also sent to your inbox.` }] }
   },
 )
 
 server.registerTool(
   'prepare_for_event',
-  {
-    description: 'Bring a God-honouring posture into the next upcoming event.',
-  },
+  { description: 'Bring a God-honouring posture into the next upcoming event.' },
   async () => {
     const events = await deps.source.upcomingEvents(24)
     if (events.length === 0) {
       return { content: [{ type: 'text', text: 'No upcoming events in the next 24 hours.' }] }
     }
-    const { reflection } = await prepareForEvent(events[0], deps)
+    const { note } = await prepareForEvent(events[0], deps)
     return {
       content: [
-        { type: 'text', text: `Preparing for "${events[0].title}":\n\n${reflection.text}\n\n— also sent to your inbox. (Stone laid.)` },
+        { type: 'text', text: `Preparing for "${events[0].title}":\n\n${note.text}\n\n— also sent to your inbox. (Reflection recorded.)` },
       ],
     }
   },

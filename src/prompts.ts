@@ -1,10 +1,10 @@
-import type { StoneKind } from './core/stone'
+import type { ReflectionKind } from './core/reflection'
 
 /**
  * The reflection prompts — the heart of the product. Postural, gentle, never a
- * harsh taskmaster; grace, not guilt. v1 seeds, meant to be refined in use.
+ * harsh taskmaster; grace, not guilt. Seeds, meant to be refined in use.
  */
-const PROMPTS: Record<StoneKind, string> = {
+const PROMPTS: Record<ReflectionKind, string> = {
   before: `You are a gentle companion to a follower of Jesus, helping them bring a
 God-honouring posture into a moment in their day. You are given only sparse
 details about an upcoming event. Offer a short reflection (2–4 sentences): a
@@ -20,12 +20,12 @@ love.`,
 
   'look-back': `You are a gentle companion to a follower of Jesus, helping them look
 back over a season of showing up. You are given ONLY the behavioural record —
-dates, kinds, streaks — never the content of what they wrote. Like the stones of
-Joshua 4, help them say "look how faithful God has been." If there are gaps, meet
-the return with grace, never reproach: "the Lord has been faithful through these
-days too." Keep it to 2–4 sentences.`,
+dates, kinds, streaks — never the content of what they wrote. Help them say
+"look how faithful God has been" across this season. If there are gaps, meet the
+return with grace, never reproach: "the Lord has been faithful through these days
+too." Keep it to 2–4 sentences.`,
 }
 
-export function promptFor(kind: StoneKind): string {
+export function promptFor(kind: ReflectionKind): string {
   return PROMPTS[kind]
 }

@@ -1,23 +1,23 @@
 import Database from 'better-sqlite3'
-import type { Cairn } from './core/cairn'
-import type { Stone } from './core/stone'
+import type { Log } from './core/log'
+import type { Reflection } from './core/reflection'
 
 /**
  * Behaviour-only by construction. There is deliberately NO content column —
  * the privacy promise is enforced by the schema, not by willpower.
  */
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS stones (
+CREATE TABLE IF NOT EXISTS reflections (
   id        TEXT PRIMARY KEY,
   date      TEXT NOT NULL,
   kind      TEXT NOT NULL,
   status    TEXT NOT NULL,
   event_ref TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_stones_date ON stones (date);
+CREATE INDEX IF NOT EXISTS idx_reflections_date ON reflections (date);
 `
 
-interface StoneRow {
+interface ReflectionRow {
   id: string
   date: string
   kind: string
@@ -25,11 +25,11 @@ interface StoneRow {
   event_ref: string | null
 }
 
-const rowToStone = (row: StoneRow): Stone => ({
+const rowToReflection = (row: ReflectionRow): Reflection => ({
   id: row.id,
   date: row.date,
-  kind: row.kind as Stone['kind'],
-  status: row.status as Stone['status'],
+  kind: row.kind as Reflection['kind'],
+  status: row.status as Reflection['status'],
   eventRef: row.event_ref ?? undefined,
 })
 
@@ -41,45 +41,45 @@ const localDay = (d: Date): string => {
   return `${y}-${m}-${day}`
 }
 
-export function makeSqliteCairn(path = process.env.CAIRN_DB_PATH ?? './cairn.sqlite'): Cairn {
+export function makeSqliteLog(path = process.env.JOSHUA421_DB ?? './joshua421.sqlite'): Log {
   const db = new Database(path)
   db.exec(SCHEMA)
 
   const insertStmt = db.prepare(
-    `INSERT OR REPLACE INTO stones (id, date, kind, status, event_ref)
+    `INSERT OR REPLACE INTO reflections (id, date, kind, status, event_ref)
      VALUES (@id, @date, @kind, @status, @event_ref)`,
   )
   const selectAllStmt = db.prepare(
-    `SELECT id, date, kind, status, event_ref FROM stones
+    `SELECT id, date, kind, status, event_ref FROM reflections
      ORDER BY date DESC, rowid DESC`,
   )
   const selectSinceStmt = db.prepare(
-    `SELECT id, date, kind, status, event_ref FROM stones
+    `SELECT id, date, kind, status, event_ref FROM reflections
      WHERE date >= ?
      ORDER BY date DESC, rowid DESC`,
   )
   const shownUpDaysStmt = db.prepare(
-    `SELECT DISTINCT date FROM stones
+    `SELECT DISTINCT date FROM reflections
      WHERE status = 'shown-up'
      ORDER BY date DESC`,
   )
 
   return {
-    async addStone(stone: Stone) {
+    async add(reflection: Reflection) {
       insertStmt.run({
-        id: stone.id,
-        date: stone.date,
-        kind: stone.kind,
-        status: stone.status,
-        event_ref: stone.eventRef ?? null,
+        id: reflection.id,
+        date: reflection.date,
+        kind: reflection.kind,
+        status: reflection.status,
+        event_ref: reflection.eventRef ?? null,
       })
     },
 
-    async stones(since?: string) {
+    async reflections(since?: string) {
       const rows = (
         since === undefined ? selectAllStmt.all() : selectSinceStmt.all(since)
-      ) as StoneRow[]
-      return rows.map(rowToStone)
+      ) as ReflectionRow[]
+      return rows.map(rowToReflection)
     },
 
     async streak() {

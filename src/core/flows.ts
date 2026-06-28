@@ -1,18 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import type { Deps, SourceEvent } from './deps'
-import type { Reflection, Stone } from './stone'
+import type { Note, Reflection } from './reflection'
 
-/** What an act-flow returns: the stone laid + the (transient) reflection text. */
+/** What an act-flow returns: the reflection recorded + the (transient) note. */
 export interface FlowResult {
-  stone: Stone
   reflection: Reflection
+  note: Note
 }
 
 /**
- * ISO local day (YYYY-MM-DD) for a Date. Uses local calendar fields so the
- * stone date, lookBack window, and the cairn's streak walk all agree on the
- * user's local day. (Duplicated from the sqlite adapter's localDay; core must
- * not depend on an adapter.)
+ * ISO local day (YYYY-MM-DD) for a Date. Local calendar fields so the record
+ * date, the look-back window, and the log's streak walk all agree on the
+ * user's local day.
  */
 function isoDay(d: Date): string {
   const y = d.getFullYear()
@@ -21,65 +20,59 @@ function isoDay(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-/**
- * BEFORE — help bring a God-honouring posture into an upcoming event.
- * Reads nothing it shouldn't; reflects; delivers; lays one stone.
- */
+/** BEFORE — help bring a God-honouring posture into an upcoming event. */
 export async function prepareForEvent(event: SourceEvent, deps: Deps): Promise<FlowResult> {
-  const r = await deps.reflect('before', { event })
-  await deps.notify(r, { eventRef: event.id })
-  const stone: Stone = {
+  const note = await deps.reflect('before', { event })
+  await deps.notify(note, { eventRef: event.id })
+  const reflection: Reflection = {
     id: randomUUID(),
     date: isoDay(deps.clock()),
     kind: 'before',
     status: 'shown-up',
     eventRef: event.id,
   }
-  await deps.cairn.addStone(stone)
-  return { stone, reflection: r }
+  await deps.log.add(reflection)
+  return { reflection, note }
 }
 
-/**
- * AFTER / end of day — reflect on the day that passed, tying it back to God's
- * faithfulness. Content is read live in deps.source and discarded.
- */
+/** AFTER / end of day — reflect on the day, tying it back to God's faithfulness. */
 export async function reflectOnDay(deps: Deps): Promise<FlowResult> {
   const today = isoDay(deps.clock())
   const ctx = await deps.source.contextForDay(today)
-  const r = await deps.reflect('after', ctx)
-  await deps.notify(r)
-  const stone: Stone = {
+  const note = await deps.reflect('after', ctx)
+  await deps.notify(note)
+  const reflection: Reflection = {
     id: randomUUID(),
     date: today,
     kind: 'after',
     status: 'shown-up',
   }
-  await deps.cairn.addStone(stone)
-  return { stone, reflection: r }
+  await deps.log.add(reflection)
+  return { reflection, note }
 }
 
 /**
- * LOOK BACK — "look how faithful God has been." Built from the cairn alone
+ * LOOK BACK — "look how faithful God has been." Built from the log alone
  * (dates, kinds, streak), never from the content of what was written.
  */
-export async function lookBack(deps: Deps): Promise<Reflection> {
-  const stones = await deps.cairn.stones()
-  const streak = await deps.cairn.streak()
+export async function lookBack(deps: Deps): Promise<Note> {
+  const reflections = await deps.log.reflections()
+  const streak = await deps.log.streak()
 
   const cutoff = isoDay(new Date(deps.clock().getTime() - 13 * 24 * 60 * 60 * 1000))
-  const last14 = stones.filter((s) => s.date >= cutoff).length
+  const last14 = reflections.filter((r) => r.date >= cutoff).length
 
-  const record = stones.map((s) => `${s.date} ${s.kind}`).join(', ')
+  const record = reflections.map((r) => `${r.date} ${r.kind}`).join(', ')
   const notes = [
-    `total stones: ${stones.length}`,
-    `stones in the last 14 days: ${last14}`,
+    `total reflections: ${reflections.length}`,
+    `reflections in the last 14 days: ${last14}`,
     `current streak: ${streak}`,
     `record: ${record}`,
   ].join('\n')
 
-  const r = await deps.reflect('look-back', { notes })
-  await deps.notify(r)
-  return r
+  const note = await deps.reflect('look-back', { notes })
+  await deps.notify(note)
+  return note
 }
 
 export { isoDay }
