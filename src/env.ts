@@ -20,3 +20,7 @@ dotenv.config({ path: join(repoRoot, '.env'), quiet: true })
 // Pin the behaviour-log DB to an absolute path so it opens regardless of cwd.
 const db = process.env.JOSHUA421_DB ?? 'joshua421.sqlite'
 process.env.JOSHUA421_DB = isAbsolute(db) ? db : join(repoRoot, db)
+
+// Same for the grounding file (the user's goals).
+const grounding = process.env.GROUNDING_PATH ?? 'grounding.md'
+process.env.GROUNDING_PATH = isAbsolute(grounding) ? grounding : join(repoRoot, grounding)

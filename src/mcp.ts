@@ -7,6 +7,7 @@ import { reflectOnDay, lookBack, prepareForEvent, readDay, applyDayNotes, isoDay
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
 import { makeGoogleDiary, makeGoogleNotifier, makeGoogleSource } from './google'
+import { makeFileGrounding } from './grounding-file'
 
 /**
  * ENTRYPOINT 1 — a thin stdio MCP server. Wires concrete adapters into the same
@@ -27,6 +28,7 @@ const deps: Deps = {
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
   diary: makeGoogleDiary(),
+  grounding: makeFileGrounding(),
   log: makeSqliteLog(),
   clock: () => new Date(),
 }
@@ -83,8 +85,8 @@ server.registerTool(
   },
   async ({ date }) => {
     const day = date ?? isoDay(new Date())
-    const events = await readDay(day, deps)
-    return { content: [{ type: 'text', text: JSON.stringify({ date: day, events }, null, 2) }] }
+    const [events, goals] = await Promise.all([readDay(day, deps), deps.grounding.get()])
+    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events }, null, 2) }] }
   },
 )
 
@@ -107,6 +109,32 @@ server.registerTool(
     if (summary) parts.push('Added a day summary.')
     parts.push('Reflection recorded.')
     return { content: [{ type: 'text', text: parts.join(' ') }] }
+  },
+)
+
+// ── grounding: the user's goals — the one stored content, used to ground everything ──
+
+server.registerTool(
+  'get_grounding',
+  { description: "Read the user's saved goals / grounding. Empty if not set yet." },
+  async () => {
+    const goals = await deps.grounding.get()
+    return { content: [{ type: 'text', text: goals ?? '(no grounding saved yet)' }] }
+  },
+)
+
+server.registerTool(
+  'set_grounding',
+  {
+    description:
+      "Save the user's goals — what they want God to grow in them. Ask about their goals " +
+      'first, compose a concise statement, confirm it with them, then save. This grounds all ' +
+      'future reflections. The user owns it and can edit or clear it anytime.',
+    inputSchema: { goals: z.string() },
+  },
+  async ({ goals }) => {
+    await deps.grounding.set(goals)
+    return { content: [{ type: 'text', text: 'Grounding saved.' }] }
   },
 )
 

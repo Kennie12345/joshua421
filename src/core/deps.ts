@@ -1,3 +1,4 @@
+import type { Grounding } from './grounding'
 import type { Log } from './log'
 import type { Note, ReflectionKind } from './reflection'
 
@@ -62,6 +63,7 @@ export interface Deps {
   reflect: Reflect
   notify: Notify
   diary: Diary
+  grounding: Grounding
   log: Log
   clock: Clock
 }
