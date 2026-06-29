@@ -4,7 +4,7 @@ import type { Deps } from './core/deps'
 import { lookBack, prepareForEvent, reflectOnDay } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
-import { makeGoogleNotifier, makeGoogleSource } from './google'
+import { makeGoogleDiary, makeGoogleNotifier, makeGoogleSource } from './google'
 
 /**
  * ENTRYPOINT 2 — the scheduled engine. Two ways to run, same jobs:
@@ -19,6 +19,7 @@ const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
+  diary: makeGoogleDiary(),
   log: makeSqliteLog(),
   clock: () => new Date(),
 }

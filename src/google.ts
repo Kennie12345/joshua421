@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import type { Notify, ReadSource, SourceContext, SourceEvent } from './core/deps'
+import type { DayEvent, Diary, Notify, ReadSource, SourceContext, SourceEvent } from './core/deps'
 
 /**
  * Google Workspace adapter — reads Calendar / Gmail / Drive and delivers via
@@ -162,5 +162,78 @@ export function makeGoogleNotifier(): Notify {
         console.error('google notifier: calendar reminder failed', err)
       }
     }
+  }
+}
+
+/**
+ * The calendar AS a diary — read the day's entries, weave APPROVED notes into
+ * them, and write the day's summary as an all-day entry. Additive only: notes
+ * are appended below a marker; the user's own words are never touched.
+ */
+export function makeGoogleDiary(): Diary {
+  const MARKER = '— joshua421 —'
+
+  return {
+    async day(date: string): Promise<DayEvent[]> {
+      const { calendar } = getClients()
+      const dayStart = new Date(`${date}T00:00:00`)
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+      const res = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: dayStart.toISOString(),
+        timeMax: dayEnd.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      })
+      const events: DayEvent[] = []
+      for (const ev of res.data.items ?? []) {
+        if (!ev.id) continue
+        const start = ev.start?.dateTime
+          ? new Date(ev.start.dateTime)
+          : ev.start?.date
+            ? new Date(`${ev.start.date}T00:00:00`)
+            : undefined
+        if (!start) continue
+        events.push({
+          id: ev.id,
+          title: ev.summary ?? '(untitled)',
+          start,
+          ...(ev.description ? { description: ev.description } : {}),
+        })
+      }
+      return events
+    },
+
+    async annotate(eventId: string, note: string): Promise<void> {
+      const { calendar } = getClients()
+      const existing = await calendar.events.get({ calendarId: 'primary', eventId })
+      const current = existing.data.description ?? ''
+      // Additive: keep the user's words; append under a single marker block.
+      const appended = current.includes(MARKER)
+        ? `${current}\n${note}`
+        : `${current}${current ? '\n\n' : ''}${MARKER}\n${note}`
+      await calendar.events.patch({
+        calendarId: 'primary',
+        eventId,
+        requestBody: { description: appended },
+      })
+    },
+
+    async writeSummary(date: string, summary: string): Promise<void> {
+      const { calendar } = getClients()
+      // The day's diary entry: an all-day event holding the summary.
+      const next = new Date(`${date}T00:00:00`)
+      next.setDate(next.getDate() + 1)
+      const endDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
+      await calendar.events.insert({
+        calendarId: 'primary',
+        requestBody: {
+          summary: `Reflection · ${date}`,
+          description: summary,
+          start: { date },
+          end: { date: endDate },
+        },
+      })
+    },
   }
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Deps, SourceEvent } from './deps'
+import type { Deps, DayEvent, SourceEvent } from './deps'
 import type { Note, Reflection } from './reflection'
 
 /** What an act-flow returns: the reflection recorded + the (transient) note. */
@@ -73,6 +73,35 @@ export async function lookBack(deps: Deps): Promise<Note> {
   const note = await deps.reflect('look-back', { notes })
   await deps.notify(note)
   return note
+}
+
+/**
+ * Read the day's calendar entries for reflection. The conversation with Claude
+ * does the reflecting — this just hands it the canvas.
+ */
+export async function readDay(date: string, deps: Deps): Promise<DayEvent[]> {
+  return deps.diary.day(date)
+}
+
+/**
+ * Apply the user-APPROVED notes (additive, into each event) plus an optional
+ * day summary, and record that they reflected. Content flows through here but is
+ * never stored — it goes to the user's own calendar; the log keeps behaviour only.
+ */
+export async function applyDayNotes(
+  input: { date: string; notes: { eventId: string; note: string }[]; summary?: string },
+  deps: Deps,
+): Promise<Reflection> {
+  for (const n of input.notes) await deps.diary.annotate(n.eventId, n.note)
+  if (input.summary) await deps.diary.writeSummary(input.date, input.summary)
+  const reflection: Reflection = {
+    id: randomUUID(),
+    date: input.date,
+    kind: 'after',
+    status: 'shown-up',
+  }
+  await deps.log.add(reflection)
+  return reflection
 }
 
 export { isoDay }

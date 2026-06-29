@@ -34,6 +34,25 @@ export type Reflect = (kind: ReflectionKind, context: SourceContext) => Promise<
 /** Delivers a note to where the person already is (email / calendar). */
 export type Notify = (note: Note, opts?: { eventRef?: string }) => Promise<void>
 
+/** A calendar entry seen as a diary entry — title, time, and its current notes. */
+export interface DayEvent {
+  id: string
+  title: string
+  start: Date
+  description?: string
+}
+
+/**
+ * The calendar AS a diary: read the day's entries, and — with the user's
+ * approval — weave gentle notes into them and write a day summary. Additive
+ * only: it never rewrites the user's own words.
+ */
+export interface Diary {
+  day(date: string): Promise<DayEvent[]>
+  annotate(eventId: string, note: string): Promise<void>
+  writeSummary(date: string, summary: string): Promise<void>
+}
+
 /** Injectable clock, so the flows are testable. */
 export type Clock = () => Date
 
@@ -42,6 +61,7 @@ export interface Deps {
   source: ReadSource
   reflect: Reflect
   notify: Notify
+  diary: Diary
   log: Log
   clock: Clock
 }
