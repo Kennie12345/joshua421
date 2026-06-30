@@ -129,6 +129,27 @@ human scale. If adopted, this **replaces the SQLite `Log` and the file-backed
 preferences** with calendar reads/writes — most likely behind the *same* `Log` /
 `Preferences` ports, so the engine doesn't change, only the adapter.
 
+### Consuming it over time (the long game)
+
+The deep value is **longitudinal**: over months, seasons, years, decades the
+entries become *evidence* of God's good work — privately held in the person's own
+calendar. Reading a day / week / month back is just a date-range query. Reading a
+year or a decade by re-scanning every entry would be heavy — so the design is
+**hierarchical rollups**: daily summaries distil into a weekly, weeklies into a
+monthly, months into a season / year — each written as its own calendar entry. A
+look-back at any horizon reads only the rollups at that level, so consumption stays
+bounded no matter how many years accumulate.
+
+Two things make the calendar genuinely queryable as a store:
+- **`extendedProperties`** on each entry — Google Calendar's private metadata
+  (type, level, date), filterable via `privateExtendedProperty` on `events.list`,
+  so we can fetch "all monthly summaries" without scanning everything;
+- time-range queries (`timeMin` / `timeMax`).
+
+The rollups aren't only a performance workaround — they **are** a headline artifact
+("your year with God," "this season"): the technical answer and the deepest feature
+turn out to be the same thing.
+
 ## Where it runs (today → future)
 
 - **Today:** your own LLM. In **Claude Desktop**, joshua421's tools are connected,
