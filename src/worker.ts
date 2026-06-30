@@ -5,7 +5,7 @@ import { composeDayEmail } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
 import { makeFileGrounding } from './grounding-file'
-import { makeGoogleDiary, makeGoogleMailer, makeGoogleNotifier, makeGoogleSource } from './google'
+import { makeGoogleDiary, makeGoogleMailer } from './google'
 
 /**
  * ENTRYPOINT 2 — the scheduled engine. Two daily emails that list the day and
@@ -16,9 +16,7 @@ import { makeGoogleDiary, makeGoogleMailer, makeGoogleNotifier, makeGoogleSource
  *   daemon:    `worker`         keeps node-cron alive → handy for `npm run worker`.
  */
 const deps: Deps = {
-  source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
-  notify: makeGoogleNotifier(),
   mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),

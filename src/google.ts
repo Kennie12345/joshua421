@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import type { DayEvent, Diary, Mailer, Notify, ReadSource, SourceContext, SourceEvent } from './core/deps'
+import type { DayEvent, Diary, Mailer } from './core/deps'
 
 /**
  * Google Workspace adapter — reads Calendar / Gmail / Drive and delivers via
@@ -11,7 +11,7 @@ import type { DayEvent, Diary, Mailer, Notify, ReadSource, SourceContext, Source
  * is ever persisted or logged. It is read live, used in the moment, discarded.
  */
 
-/** One OAuth2 client, built lazily and shared by source + notifier. */
+/** One OAuth2 client, built lazily and shared by the calendar + mailer adapters. */
 let clients: ReturnType<typeof buildClients> | undefined
 
 function buildClients() {
@@ -43,141 +43,6 @@ function encodeMailHeader(value: string): string {
 /** The shared Calendar client (reuses the single OAuth2 client). */
 export function googleCalendar() {
   return getClients().calendar
-}
-
-export function makeGoogleSource(): ReadSource {
-  return {
-    async upcomingEvents(withinHours: number): Promise<SourceEvent[]> {
-      const { calendar } = getClients()
-      const now = new Date()
-      const max = new Date(now.getTime() + withinHours * 60 * 60 * 1000)
-      const res = await calendar.events.list({
-        calendarId: 'primary',
-        timeMin: now.toISOString(),
-        timeMax: max.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      })
-      const items = res.data.items ?? []
-      const events: SourceEvent[] = []
-      for (const ev of items) {
-        if (!ev.id) continue
-        // Timed events carry dateTime; all-day events carry a date-only string.
-        // new Date('YYYY-MM-DD') parses as UTC midnight, so anchor all-day
-        // entries to local midnight instead — mirroring contextForDay.
-        const start = ev.start?.dateTime
-          ? new Date(ev.start.dateTime)
-          : ev.start?.date
-            ? new Date(`${ev.start.date}T00:00:00`)
-            : undefined
-        if (!start) continue
-        const end = ev.end?.dateTime
-          ? new Date(ev.end.dateTime)
-          : ev.end?.date
-            ? new Date(`${ev.end.date}T00:00:00`)
-            : undefined
-        events.push({
-          id: ev.id,
-          title: ev.summary ?? '(untitled)',
-          start,
-          ...(end ? { end } : {}),
-        })
-      }
-      return events
-    },
-
-    async contextForDay(date: string): Promise<SourceContext> {
-      const { calendar } = getClients()
-      // Local day window [00:00, next 00:00) for the given YYYY-MM-DD.
-      const dayStart = new Date(`${date}T00:00:00`)
-      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
-      const res = await calendar.events.list({
-        calendarId: 'primary',
-        timeMin: dayStart.toISOString(),
-        timeMax: dayEnd.toISOString(),
-        singleEvents: true,
-        orderBy: 'startTime',
-      })
-      const items = res.data.items ?? []
-      const lines: string[] = []
-      for (const ev of items) {
-        const startStr = ev.start?.dateTime ?? ev.start?.date
-        const title = ev.summary ?? '(untitled)'
-        if (startStr && ev.start?.dateTime) {
-          const t = new Date(startStr).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-          lines.push(`${t} — ${title}`)
-        } else {
-          // All-day (date only) or undated entry.
-          lines.push(`all day — ${title}`)
-        }
-      }
-      // TODO(v1): diary + email reading is out of scope. If added later, gather
-      // the day's Gmail subjects live here and fold into `notes` — but never
-      // store or log any of it; SourceContext is transient by contract.
-      const notes =
-        lines.length > 0
-          ? `Calendar for ${date}:\n${lines.join('\n')}`
-          : `No calendar entries for ${date}.`
-      return { notes }
-    },
-  }
-}
-
-export function makeGoogleNotifier(): Notify {
-  return async (reflection, opts) => {
-    const { gmail, calendar } = getClients()
-
-    // Send-only Gmail scope — joshua421 never reads your inbox. Your own
-    // address comes from .env (GOOGLE_USER_EMAIL), not from a profile read.
-    const address = process.env.GOOGLE_USER_EMAIL
-    if (!address) throw new Error('google notifier: set GOOGLE_USER_EMAIL in .env')
-
-    const headers = [
-      `From: ${address}`,
-      `To: ${address}`,
-      `Subject: ${encodeMailHeader('joshua421 · a reflection')}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/plain; charset="UTF-8"',
-    ]
-    const message = `${headers.join('\r\n')}\r\n\r\n${reflection.text}`
-    const raw = Buffer.from(message, 'utf8')
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-
-    // The send carries the reflection content in `raw`; a thrown GaxiosError
-    // would attach that payload to its config/response and leak it to any
-    // generic logger. Rethrow a content-free error so it never reaches a log.
-    try {
-      await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
-    } catch {
-      throw new Error('google notifier: email send failed')
-    }
-
-    // Optional secondary surface: a short calendar marker tied to the event.
-    // Email is the primary channel; keep this simple and non-fatal.
-    if (opts?.eventRef) {
-      const start = new Date()
-      const end = new Date(start.getTime() + 15 * 60 * 1000)
-      try {
-        await calendar.events.insert({
-          calendarId: 'primary',
-          requestBody: {
-            summary: 'joshua421 · a reflection',
-            start: { dateTime: start.toISOString() },
-            end: { dateTime: end.toISOString() },
-          },
-        })
-      } catch (err) {
-        // Log the failure, never the content.
-        console.error('google notifier: calendar reminder failed', err)
-      }
-    }
-  }
 }
 
 /**

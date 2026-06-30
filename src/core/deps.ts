@@ -20,20 +20,8 @@ export interface SourceContext {
   notes?: string
 }
 
-/**
- * Reads the person's world, live. A plain injected interface for now — promote
- * to a formal port only when a test or a second implementation demands it.
- */
-export interface ReadSource {
-  upcomingEvents(withinHours: number): Promise<SourceEvent[]>
-  contextForDay(date: string): Promise<SourceContext>
-}
-
 /** Turns live context into a note (the words offered). Implemented by the LLM. */
 export type Reflect = (kind: ReflectionKind, context: SourceContext) => Promise<Note>
-
-/** Delivers a note to where the person already is (email / calendar). */
-export type Notify = (note: Note, opts?: { eventRef?: string }) => Promise<void>
 
 /** Sends a plain email to the user — custom subject and body. */
 export type Mailer = (subject: string, body: string) => Promise<void>
@@ -65,9 +53,7 @@ export type Clock = () => Date
 
 /** Everything a flow needs, injected — the seam the two entrypoints wire up. */
 export interface Deps {
-  source: ReadSource
   reflect: Reflect
-  notify: Notify
   mailer: Mailer
   diary: Diary
   grounding: Grounding

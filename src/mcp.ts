@@ -3,10 +3,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Deps } from './core/deps'
 import { z } from 'zod'
-import { reflectOnDay, lookBack, prepareForEvent, readDay, applyDayNotes, isoDay } from './core/flows'
+import { readDay, applyDayNotes, isoDay } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
-import { makeGoogleDiary, makeGoogleMailer, makeGoogleNotifier, makeGoogleSource } from './google'
+import { makeGoogleDiary, makeGoogleMailer } from './google'
 import { makeFileGrounding } from './grounding-file'
 
 /**
@@ -24,9 +24,7 @@ console.error(
 )
 
 const deps: Deps = {
-  source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
-  notify: makeGoogleNotifier(),
   mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),
@@ -36,42 +34,7 @@ const deps: Deps = {
 
 const server = new McpServer({ name: 'joshua421', version: '0.1.0' })
 
-server.registerTool(
-  'reflect_on_day',
-  { description: "Reflect on the day that passed, tying it back to God's faithfulness, and deliver it." },
-  async () => {
-    const { note } = await reflectOnDay(deps)
-    return { content: [{ type: 'text', text: `${note.text}\n\n— also sent to your inbox. (Reflection recorded.)` }] }
-  },
-)
-
-server.registerTool(
-  'look_back',
-  { description: 'Look back over your reflections — "look how faithful God has been."' },
-  async () => {
-    const note = await lookBack(deps)
-    return { content: [{ type: 'text', text: `${note.text}\n\n— also sent to your inbox.` }] }
-  },
-)
-
-server.registerTool(
-  'prepare_for_event',
-  { description: 'Bring a God-honouring posture into the next upcoming event.' },
-  async () => {
-    const events = await deps.source.upcomingEvents(24)
-    if (events.length === 0) {
-      return { content: [{ type: 'text', text: 'No upcoming events in the next 24 hours.' }] }
-    }
-    const { note } = await prepareForEvent(events[0], deps)
-    return {
-      content: [
-        { type: 'text', text: `Preparing for "${events[0].title}":\n\n${note.text}\n\n— also sent to your inbox. (Reflection recorded.)` },
-      ],
-    }
-  },
-)
-
-// ── v2: reflect on the day in conversation, then weave approved notes into the calendar ──
+// ── reflect on the day in conversation, then weave approved notes into the calendar ──
 
 server.registerTool(
   'read_day',
