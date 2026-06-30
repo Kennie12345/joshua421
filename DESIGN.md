@@ -150,6 +150,26 @@ The rollups aren't only a performance workaround — they **are** a headline art
 ("your year with God," "this season"): the technical answer and the deepest feature
 turn out to be the same thing.
 
+### Significant moments & media
+
+Not every day is equal. Some are landmarks — so mark them. A moment is flagged
+**significant** via `extendedProperties` (set in the conversation — "this was a big
+one"), and the rollups **surface the period's significant moments first**, so a
+year / decade look-back leads with the landmarks rather than an even wash of days.
+
+Rich media rides the same rails: photos and videos live in the user's **Drive**
+(their own storage), and the calendar entry **references** them via Calendar
+**attachments** (Drive file links). The calendar stays the index — references, tags,
+summaries — while Drive holds the blobs; joshua421 still stores nothing. So "your
+year with God" can lead with the actual moments, photos attached.
+
+Two honest notes: this needs a **Drive scope** (a new permission beyond calendar +
+send-only Gmail), and having the LLM *see* an image to write about it (vision) is a
+further step beyond merely *referencing* it — a later enhancement. The whole layer
+sits on top of calendar-as-database without changing the ports or the engine: the
+`Diary` adapter gains "attach" and "mark significant," and rollups filter by the
+significance tag.
+
 ## Where it runs (today → future)
 
 - **Today:** your own LLM. In **Claude Desktop**, joshua421's tools are connected,
