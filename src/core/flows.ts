@@ -55,9 +55,13 @@ function eventTime(d: Date): string {
  * here — the email is the nudge that gets them talking to their assistant.
  */
 export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): Promise<void> {
-  const today = isoDay(deps.clock())
+  const now = deps.clock()
+  const today = isoDay(now)
+  // Day-of-week is a cheap, high-signal cue — a Sunday after church, a heavy
+  // weekday, a sabbath all want different questions.
+  const weekday = now.toLocaleDateString([], { weekday: 'long' })
   const events = await deps.diary.day(today)
-  const goals = await deps.grounding.get()
+  const preferences = await deps.grounding.get()
 
   // Deterministic day list — the LLM never invents events.
   const dayList = events.length
@@ -65,8 +69,9 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
     : '(nothing on your calendar today)'
 
   const context = [
-    goals ? `The person's goals:\n${goals}` : 'No goals set yet.',
-    `Their day (${today}):\n${dayList}`,
+    preferences ? `Their preferences:\n${preferences}` : 'No preferences set yet.',
+    `Today is ${weekday} (${today}).`,
+    `Their day:\n${dayList}`,
   ].join('\n\n')
   const questions = (await deps.reflect(kind, { notes: context })).text.trim()
 

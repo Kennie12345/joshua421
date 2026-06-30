@@ -80,10 +80,14 @@ server.registerTool(
 
 server.registerTool(
   'get_grounding',
-  { description: "Read the user's saved goals / grounding. Empty if not set yet." },
+  {
+    description:
+      "Read the user's saved preferences — the grounding for every reflection and email " +
+      '(goals, tone, weekly rhythm, church day/time, quiet-time slot). Empty if not set yet.',
+  },
   async () => {
-    const goals = await deps.grounding.get()
-    return { content: [{ type: 'text', text: goals ?? '(no grounding saved yet)' }] }
+    const prefs = await deps.grounding.get()
+    return { content: [{ type: 'text', text: prefs ?? '(no preferences saved yet)' }] }
   },
 )
 
@@ -91,14 +95,18 @@ server.registerTool(
   'set_grounding',
   {
     description:
-      "Save the user's goals — what they want God to grow in them. Ask about their goals " +
-      'first, compose a concise statement, confirm it with them, then save. This grounds all ' +
-      'future reflections. The user owns it and can edit or clear it anytime.',
-    inputSchema: { goals: z.string() },
+      "Save the user's preferences — the grounding for every reflection and email. Cover, in " +
+      'their own words: their objectives and goals (what they want God to grow in them); the ' +
+      'language and tone they want (gentle or direct, plain or poetic); their weekly rhythm and ' +
+      'how often they want to reflect; their church day and time; and any daily quiet-time slot. ' +
+      'Ask about these conversationally first, compose a concise plain-text document (suggested ' +
+      'headings: Goals, Tone & language, Rhythm, Church, Quiet time), confirm it with them, then ' +
+      'save. Partial is fine — save what they have shared. They own it and can edit or clear it anytime.',
+    inputSchema: { preferences: z.string() },
   },
-  async ({ goals }) => {
-    await deps.grounding.set(goals)
-    return { content: [{ type: 'text', text: 'Grounding saved.' }] }
+  async ({ preferences }) => {
+    await deps.grounding.set(preferences)
+    return { content: [{ type: 'text', text: 'Preferences saved.' }] }
   },
 )
 
