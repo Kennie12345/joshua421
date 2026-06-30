@@ -30,6 +30,11 @@ function getClients() {
   return clients
 }
 
+/** The shared Calendar client (reuses the single OAuth2 client). */
+export function googleCalendar() {
+  return getClients().calendar
+}
+
 export function makeGoogleSource(): ReadSource {
   return {
     async upcomingEvents(withinHours: number): Promise<SourceEvent[]> {

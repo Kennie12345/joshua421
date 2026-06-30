@@ -198,6 +198,8 @@ refactor-later.
   / `prepare_for_event` (finished-reflection email tools)
 - worker: two daily emails grounded in goals, with Claude/ChatGPT links; launchd
   agents (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
+- **Journal** — the calendar-as-database store seam (`core/journal.ts` port +
+  `journal-google.ts` Google adapter: typed, tagged, queryable; verified live)
 
 **Planned (in order):**
 1. **Preferences** — expand grounding to objectives / goals / language / tone /
@@ -207,7 +209,7 @@ refactor-later.
 3. **Emails reworked** — morning *setup* (using yesterday's summary + weekday +
    church) and evening *summary* (stored in the calendar); prune the
    devotional-only finished-reflection tools.
-4. **Storage** — evaluate moving the `Log` and preferences into the calendar
-   itself (the *calendar as the database* direction above), behind the same ports.
+4. **Cut `Log` + `Preferences` over to the Journal** (keystone built) and add the
+   rollup jobs — storage becomes the calendar, behind the same ports.
 5. **Later** — more surfaces (habit / notes / reminder apps); the hosted website
    with an embedded LLM.
