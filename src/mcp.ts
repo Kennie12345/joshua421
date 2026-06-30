@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { reflectOnDay, lookBack, prepareForEvent, readDay, applyDayNotes, isoDay } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
-import { makeGoogleDiary, makeGoogleNotifier, makeGoogleSource } from './google'
+import { makeGoogleDiary, makeGoogleMailer, makeGoogleNotifier, makeGoogleSource } from './google'
 import { makeFileGrounding } from './grounding-file'
 
 /**
@@ -27,6 +27,7 @@ const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
+  mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),
   log: makeSqliteLog(),

@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import type { DayEvent, Diary, Notify, ReadSource, SourceContext, SourceEvent } from './core/deps'
+import type { DayEvent, Diary, Mailer, Notify, ReadSource, SourceContext, SourceEvent } from './core/deps'
 
 /**
  * Google Workspace adapter — reads Calendar / Gmail / Drive and delivers via
@@ -236,4 +236,34 @@ export function makeGoogleDiary(): Diary {
       })
     },
   }
+}
+
+async function sendSelfEmail(subject: string, body: string): Promise<void> {
+  const { gmail } = getClients()
+  const address = process.env.GOOGLE_USER_EMAIL
+  if (!address) throw new Error('google mailer: set GOOGLE_USER_EMAIL in .env')
+  const headers = [
+    `From: ${address}`,
+    `To: ${address}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+  ]
+  const message = `${headers.join('\r\n')}\r\n\r\n${body}`
+  const raw = Buffer.from(message, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+  // Content-free error: the body would otherwise ride along on a GaxiosError.
+  try {
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+  } catch {
+    throw new Error('google mailer: email send failed')
+  }
+}
+
+/** Sends a plain email to the user (custom subject + body). Send-only scope. */
+export function makeGoogleMailer(): Mailer {
+  return (subject, body) => sendSelfEmail(subject, body)
 }

@@ -1,39 +1,35 @@
 import './env'
 import cron from 'node-cron'
 import type { Deps } from './core/deps'
-import { lookBack, prepareForEvent, reflectOnDay } from './core/flows'
+import { composeDayEmail } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
-import { makeGoogleDiary, makeGoogleNotifier, makeGoogleSource } from './google'
 import { makeFileGrounding } from './grounding-file'
+import { makeGoogleDiary, makeGoogleMailer, makeGoogleNotifier, makeGoogleSource } from './google'
 
 /**
- * ENTRYPOINT 2 — the scheduled engine. Two ways to run, same jobs:
+ * ENTRYPOINT 2 — the scheduled engine. Two daily emails that list the day and
+ * ask how to orient it to God, then point the user to reflect with their own
+ * LLM. The reflecting happens there; the email is the nudge.
  *
- *   one-shot:  `worker <job>`   runs one job and exits → used by the launchd
- *              StartCalendarInterval agents. Robust on a laptop that sleeps:
- *              launchd runs a missed job on wake.
- *   daemon:    `worker`         keeps node-cron alive in the foreground → handy
- *              for `npm run worker` while developing.
+ *   one-shot:  `worker <job>`   runs one job and exits → the launchd agents.
+ *   daemon:    `worker`         keeps node-cron alive → handy for `npm run worker`.
  */
 const deps: Deps = {
   source: makeGoogleSource(),
   reflect: makeClaudeReflector(),
   notify: makeGoogleNotifier(),
+  mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),
   log: makeSqliteLog(),
   clock: () => new Date(),
 }
 
-// L1 — the jobs. Each is timing-blind and named.
+// The two daily jobs — each composes and sends one question-email.
 const JOBS: Record<string, (d: Deps) => Promise<unknown>> = {
-  prepare: async (d) => {
-    const events = await d.source.upcomingEvents(24)
-    for (const event of events) await prepareForEvent(event, d)
-  },
-  reflect: (d) => reflectOnDay(d),
-  'look-back': (d) => lookBack(d),
+  morning: (d) => composeDayEmail('morning', d),
+  evening: (d) => composeDayEmail('evening', d),
 }
 
 async function runJob(name: string): Promise<void> {
@@ -55,11 +51,10 @@ if (job) {
       process.exit(1)
     })
 } else {
-  // Daemon mode (node-cron). L2 — the schedule as data; L3 — the mechanism.
+  // Daemon mode (node-cron).
   const SCHEDULE: { cron: string; job: string }[] = [
-    { cron: '0 7 * * *', job: 'prepare' },
-    { cron: '0 20 * * *', job: 'reflect' },
-    { cron: '0 19 * * 0', job: 'look-back' },
+    { cron: '0 7 * * *', job: 'morning' },
+    { cron: '0 20 * * *', job: 'evening' },
   ]
   for (const s of SCHEDULE) {
     cron.schedule(s.cron, () => {

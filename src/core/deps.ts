@@ -35,6 +35,9 @@ export type Reflect = (kind: ReflectionKind, context: SourceContext) => Promise<
 /** Delivers a note to where the person already is (email / calendar). */
 export type Notify = (note: Note, opts?: { eventRef?: string }) => Promise<void>
 
+/** Sends a plain email to the user — custom subject and body. */
+export type Mailer = (subject: string, body: string) => Promise<void>
+
 /** A calendar entry seen as a diary entry — title, time, and its current notes. */
 export interface DayEvent {
   id: string
@@ -62,6 +65,7 @@ export interface Deps {
   source: ReadSource
   reflect: Reflect
   notify: Notify
+  mailer: Mailer
   diary: Diary
   grounding: Grounding
   log: Log

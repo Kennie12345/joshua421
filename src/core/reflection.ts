@@ -8,7 +8,7 @@
  *    date, kind, status, never content. The growing record is what you look
  *    back over to see how faithful God has been.
  */
-export type ReflectionKind = 'before' | 'after' | 'look-back'
+export type ReflectionKind = 'before' | 'after' | 'look-back' | 'morning' | 'evening'
 
 export type ReflectionStatus = 'shown-up' | 'skipped'
 
