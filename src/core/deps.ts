@@ -44,6 +44,9 @@ export interface DayEvent {
   title: string
   start: Date
   description?: string
+  /** True if the event has other attendees — writing into it in place would
+   *  leak the note to everyone, so it must be shaped via a private side-entry. */
+  shared: boolean
 }
 
 /**

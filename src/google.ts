@@ -30,6 +30,16 @@ function getClients() {
   return clients
 }
 
+/**
+ * Email headers must be 7-bit ASCII (RFC 5322); a Content-Type charset only
+ * governs the body. Any non-ASCII subject (e.g. the "·" separator) must ride as
+ * an RFC 2047 encoded-word or clients fall back to Latin-1 and mojibake it.
+ */
+function encodeMailHeader(value: string): string {
+  if (/^[\x00-\x7F]*$/.test(value)) return value
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`
+}
+
 /** The shared Calendar client (reuses the single OAuth2 client). */
 export function googleCalendar() {
   return getClients().calendar
@@ -128,7 +138,7 @@ export function makeGoogleNotifier(): Notify {
     const headers = [
       `From: ${address}`,
       `To: ${address}`,
-      'Subject: joshua421 · a reflection',
+      `Subject: ${encodeMailHeader('joshua421 · a reflection')}`,
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset="UTF-8"',
     ]
@@ -203,6 +213,7 @@ export function makeGoogleDiary(): Diary {
           id: ev.id,
           title: ev.summary ?? '(untitled)',
           start,
+          shared: (ev.attendees?.length ?? 0) > 0,
           ...(ev.description ? { description: ev.description } : {}),
         })
       }
@@ -212,6 +223,15 @@ export function makeGoogleDiary(): Diary {
     async annotate(eventId: string, note: string): Promise<void> {
       const { calendar } = getClients()
       const existing = await calendar.events.get({ calendarId: 'primary', eventId })
+      // Privacy backstop: an event with attendees is shared — patching its
+      // description syncs to every attendee's copy. Refuse; the note belongs in a
+      // private side-entry instead. (read_day marks these as `shared` so the
+      // conversation never proposes an in-place note for them.)
+      if ((existing.data.attendees?.length ?? 0) > 0) {
+        throw new Error(
+          'refusing to annotate a shared event in place — its description would sync to every attendee. Use a private side-entry instead.',
+        )
+      }
       const current = existing.data.description ?? ''
       // Additive: keep the user's words; append under a single marker block.
       const appended = current.includes(MARKER)
@@ -250,7 +270,7 @@ async function sendSelfEmail(subject: string, body: string): Promise<void> {
   const headers = [
     `From: ${address}`,
     `To: ${address}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeMailHeader(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
   ]
