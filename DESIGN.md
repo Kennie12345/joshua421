@@ -200,8 +200,11 @@ refactor-later.
 - MCP: `read_day`, `apply_day_notes` (additive annotate + day summary; refuses to
   annotate a *shared* event in place — a shared note would sync to every attendee),
   `get_grounding` / `set_grounding`
-- worker: two daily emails grounded in goals, with Claude/ChatGPT links; launchd
-  agents (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
+- worker: two daily emails grounded in preferences, with Claude/ChatGPT links;
+  launchd agents (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
+- **Preferences** — grounding broadened to a freeform doc (goals, tone & language,
+  rhythm, church day/time, quiet-time slot); morning/evening prompts honour tone
+  and the day's shape; the day-of-week signal flows into the email context
 - **Journal** — the calendar-as-database store seam (`core/journal.ts` port +
   `journal-google.ts` Google adapter: typed, tagged, queryable; verified live)
 
@@ -217,18 +220,20 @@ refactor-later.
   `Preferences` port); migrates to a calendar entry at the Journal cutover.
 
 **Planned (in order):**
-1. **Preferences** — expand grounding to objectives / goals / language / tone /
-   regularity / church day-time; add day-of-week and yesterday's-summary signals.
+1. **Invariant tests** *(the gate)* — in-memory Journal + fake Log + an anchor
+   test: recording "a reflection happened" yields an *empty-body* entry; content
+   only ever flows the content path. Written *before* the seam re-cut, because the
+   cutover trades a structural guarantee (the Log has no content column) for a
+   disciplinary one (markers and content share one Journal `add`).
 2. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the
    store calendar); `Diary` shrinks to read + in-place annotate; side-entries
    become Journal entries; idempotent `upsert(kind, periodKey, entry)`; delete
    guarded to `joshua421=true`; pagination (the 2500-cap bug), tz-immune day
-   windows, read-after-write by id. Add the first tests (anchor: no content
-   reaches the behavioural store).
+   windows, read-after-write by id.
 3. **Privacy-aware diary CRUD** — write-in-place *or* side-entry; full CRUD; every
    write approved in chat; delete limited to joshua421-created entries.
-4. **Emails reworked** — morning *setup* (using yesterday's summary + weekday +
-   church) and evening *summary* (stored in the calendar).
+4. **Emails reworked** — morning *setup* (now also using yesterday's summary, read
+   back from the Journal) and evening *summary* (stored in the calendar).
 5. **Cut `Log` + `Preferences` over to the Journal** (keystone built) and add the
    rollup jobs — storage becomes the calendar, behind the same ports.
 6. **Later** — more surfaces (habit / notes / reminder apps); the hosted website
