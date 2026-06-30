@@ -3,59 +3,64 @@
 > "When your children ask in time to come, 'What do these stones mean?'
 > then you shall let your children know..." — **Joshua 4:21–22**
 
-In Joshua 4, Israel crosses the Jordan on dry ground. Before they move on, God
-has twelve men each carry a stone from the riverbed and pile them into a
-memorial — so that later, when the question comes, the story of God's
-faithfulness gets retold.
+In Joshua 4, Israel crosses the Jordan and piles twelve stones into a memorial,
+so that later — when the question comes — the story of God's faithfulness gets
+retold. That memory, carried into the rhythm of a life, is the spirit of this
+project.
 
-That is the whole point of this project.
+## What it is
 
-## Purpose
+**joshua421 calls your LLM to help you reflect on your day and set it up for the
+Lord — and writes that into your diary (your calendar's notes today; habit, notes,
+and reminder apps later) so it shapes the day, not just your inbox.**
 
-**Help me look back and see how faithful God has been.**
+It is *not* a devotional you read passively. *You* reflect, actively, with your own
+LLM (Claude, ChatGPT, …); joshua421 is the tools, the memory, and the write-surface
+that turn the reflection into gentle, specific notes — placed right in your day.
 
-Every decision — features, cost, architecture — is measured against that one
-sentence. If a thing helps someone look back and see God's faithfulness, it
-belongs. If it only drives engagement, it does not.
+→ See **[DESIGN.md](./DESIGN.md)** for the full vision, the context signals, the
+privacy model, the calendar-as-database direction, and the roadmap (built vs planned).
 
-## What it does (v1)
+## The loop
 
-Around my calendar — and, while I'm the only user, my own diary and email — it
-offers a quiet **pre-reflection** before an event ("what posture do you want to
-bring into this?"), and a **reflection** afterward that ties the day back to
-God's faithfulness. It meets me where I already am: my inbox and my calendar.
-No app. No dashboard. Purely functional.
+1. An **email** reminds you — sets up the morning, summarises the evening.
+2. You open **your LLM**; a link prefills the conversation.
+3. It helps you reflect and **set the day up for the Lord**, grounded in your goals
+   and the day.
+4. With your **approval**, it writes notes into your calendar.
+5. joshua421 records *that* you reflected — never *what* you said.
 
-## The stones
+## Promises
 
-A **stone** is a record of *consistent effort over time*. The **cairn** is the
-growing pile of those stones — the thing I read back later and say,
-*"look how faithful God has been in my life."* The pile is my own real entries
-accumulating; the system doesn't draw it, it helps shape and reflect on it.
-
-## The promises
-
-1. **Behaviour, not content.** I remember *that* you showed up — never *what*
-   you said. Content is read live, used in the moment, and discarded. The store
-   holds the cairn (dates, kinds, showed-up / skipped, streaks) and nothing else.
-2. **Grace, not guilt.** A gap is noticed without reproach. The return after
-   absence is met with grace — *"the Lord has been faithful through these days
-   too — want to mark them?"* — never a broken-streak shaming. This is a
-   memorial to God's faithfulness, not a scorecard of my discipline.
-3. **Gentle and postural.** It prods toward God; it is never a harsh taskmaster.
-
-## Scope
-
-**Dogfood first.** v1 is for me — my own tokens, no account system, no third-
-party data. Onboarding others (and the token custody, minimal scopes, and
-hosting that responsibly requires) is a deliberate, later step — and a hard
-tripwire, not a refactor-later.
+1. **Behaviour, not content** — the log holds only dates/kinds/status; your
+   reflection and diary content are read live and discarded. Your goals/preferences
+   are the single, opt-in exception you choose to store.
+2. **Additive** — notes are added alongside your words; never rewriting or deleting.
+3. **Permission at the boundary** — nothing is written without your approval, in chat.
+4. **Grace, not guilt** — gaps met with grace; a memorial to God's faithfulness, not
+   a scorecard.
 
 ## Architecture (one breath)
 
-A TypeScript **core engine** (pure: read → reflect → persist behaviour →
-deliver), behind two thin entrypoints — an **MCP** I run inside my own Claude,
-and a scheduled **worker** that runs the before/after cycle on its own. One
-load-bearing seam: the **cairn** store, which is the privacy boundary, the
-free→premium boundary, and the test boundary all at once. Everything else stays
-concrete until a test makes me promote it.
+A TypeScript **core engine** behind ports (Source · Reflect · Notify · Mailer ·
+Diary · Log · Preferences), with two entrypoints — an **MCP** your LLM calls, and a
+scheduled **worker** for the emails. Adapters: **Google Workspace** (calendar
+read/write, Gmail send-only), the **Claude reflector** (Opus 4.8), a **SQLite** log,
+**file-backed** preferences. The **`Diary` port is the "surface we modify"** —
+calendar today, more apps later as new adapters. *(The calendar may become the
+single store — see DESIGN.md.)*
+
+## Run it
+
+- `npm run auth` — one-time Google OAuth to mint your refresh token.
+- `npm run mcp` — the stdio MCP server (connect it in Claude Desktop / Claude Code).
+- `npm run worker` — the scheduled emails (or the launchd agents in
+  `~/Library/LaunchAgents/com.joshua421.*`).
+
+Config lives in `.env` (see `.env.example`): your Google OAuth, `ANTHROPIC_API_KEY`,
+and local paths. Current state vs. roadmap: **DESIGN.md → Status**.
+
+## Scope
+
+**Dogfood first** — me, my own tokens, no account system. Onboarding others (their
+token custody, minimal scopes, hosting) is a deliberate, later step.
