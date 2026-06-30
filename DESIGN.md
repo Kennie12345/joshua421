@@ -84,9 +84,13 @@ joshua421 stores — by your explicit choice — because grounding requires memo
 
 ## Promises (invariants)
 
-1. **Behaviour, not content** — the log holds only dates/kinds/status; your
-   reflection and diary content are read live and discarded. Preferences are the
-   single, opt-in exception.
+1. **Behaviour, not content** — joshua421's own log holds only dates/kinds/status.
+   Your reflections and diary notes live in *your* calendar, which syncs, exports
+   to ICS, and is readable by every calendar-scoped app per *your* Google
+   settings — joshua421 stores none of it itself. So the honest claim is **"we
+   store nothing of yours,"** never "your content is encrypted or app-scoped":
+   calendar fields are exactly as private as your calendar is. (Preferences are
+   the single piece it does keep, by your choice.)
 2. **Additive** — notes are added alongside your words; never rewriting or
    deleting them.
 3. **Permission at the boundary** — nothing is written without your approval, in
@@ -96,8 +100,8 @@ joshua421 stores — by your explicit choice — because grounding requires memo
 
 ## Architecture
 
-- Pure `core/` engine behind ports: **ReadSource, Reflect, Notify, Mailer, Diary,
-  Log, Preferences**.
+- Pure `core/` engine behind ports: **Reflect, Mailer, Diary, Log, Preferences**,
+  and the **Journal** store (calendar-as-database).
 - Two entrypoints: `mcp.ts` (interactive — your LLM calls the tools) and
   `worker.ts` (scheduled — the emails).
 - Adapters: **Google Workspace** (calendar read/write, Gmail send-only), the
@@ -193,23 +197,39 @@ refactor-later.
 **Built today:**
 - core engine (`Note` / `Reflection` / `Log`), Google + Claude + SQLite adapters,
   `env.ts`
-- MCP: `read_day`, `apply_day_notes` (additive annotate + day summary),
-  `get_grounding` / `set_grounding`, plus the older `reflect_on_day` / `look_back`
-  / `prepare_for_event` (finished-reflection email tools)
+- MCP: `read_day`, `apply_day_notes` (additive annotate + day summary; refuses to
+  annotate a *shared* event in place — a shared note would sync to every attendee),
+  `get_grounding` / `set_grounding`
 - worker: two daily emails grounded in goals, with Claude/ChatGPT links; launchd
   agents (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
 - **Journal** — the calendar-as-database store seam (`core/journal.ts` port +
   `journal-google.ts` Google adapter: typed, tagged, queryable; verified live)
 
+**Decisions (settled):**
+- **Store calendar** — configurable via `JOSHUA421_CALENDAR_ID` (dedicated
+  "joshua421" calendar *or* primary; the user chooses per their setup). Default
+  primary.
+- **Behavioural record** — a separate **empty-body marker** entry per reflected
+  day (keeps the no-content guarantee structural; marks any day with a reflection).
+- **Raw content** — the calendar holds everything, including the rawest
+  reflection; privacy wording is honest about calendar exposure (see Promise 1).
+- **Preferences** — a local file **for now** (ships present value, behind the
+  `Preferences` port); migrates to a calendar entry at the Journal cutover.
+
 **Planned (in order):**
 1. **Preferences** — expand grounding to objectives / goals / language / tone /
    regularity / church day-time; add day-of-week and yesterday's-summary signals.
-2. **Privacy-aware diary CRUD** — write-in-place *or* side-entry; full CRUD; every
+2. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the
+   store calendar); `Diary` shrinks to read + in-place annotate; side-entries
+   become Journal entries; idempotent `upsert(kind, periodKey, entry)`; delete
+   guarded to `joshua421=true`; pagination (the 2500-cap bug), tz-immune day
+   windows, read-after-write by id. Add the first tests (anchor: no content
+   reaches the behavioural store).
+3. **Privacy-aware diary CRUD** — write-in-place *or* side-entry; full CRUD; every
    write approved in chat; delete limited to joshua421-created entries.
-3. **Emails reworked** — morning *setup* (using yesterday's summary + weekday +
-   church) and evening *summary* (stored in the calendar); prune the
-   devotional-only finished-reflection tools.
-4. **Cut `Log` + `Preferences` over to the Journal** (keystone built) and add the
+4. **Emails reworked** — morning *setup* (using yesterday's summary + weekday +
+   church) and evening *summary* (stored in the calendar).
+5. **Cut `Log` + `Preferences` over to the Journal** (keystone built) and add the
    rollup jobs — storage becomes the calendar, behind the same ports.
-5. **Later** — more surfaces (habit / notes / reminder apps); the hosted website
+6. **Later** — more surfaces (habit / notes / reminder apps); the hosted website
    with an embedded LLM.
