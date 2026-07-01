@@ -41,3 +41,20 @@ test('delete() removes an event that is joshua421-tagged', async () => {
   await journal.delete('evt-joshua421')
   assert.deepEqual(deleted, ['evt-joshua421'])
 })
+
+test('update() refuses to modify an event that is not joshua421-tagged (never stamps a real event)', async () => {
+  const patched: unknown[] = []
+  const cal = {
+    events: {
+      get: async () => ({ data: { extendedProperties: { private: {} } } }),
+      patch: async (p: unknown) => {
+        patched.push(p)
+        return { data: {} }
+      },
+    },
+  } as unknown as calendar_v3.Calendar
+  const journal = makeGoogleJournal('primary', cal)
+
+  await assert.rejects(() => journal.update('real-event', { title: 'x' }))
+  assert.equal(patched.length, 0, 'must not patch an untagged event')
+})

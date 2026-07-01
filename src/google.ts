@@ -60,7 +60,10 @@ export function makeGoogleDiary(
     storeCalendarId?: string
   } = {},
 ): Diary {
-  const MARKER = '— joshua421 —'
+  const BLOCK_BEGIN = '— joshua421 —'
+  // A closing fence, so reversal removes EXACTLY our block — never the user's own
+  // words, which may sit before OR after it.
+  const BLOCK_END = '—·—'
   const cal = () => opts.calendar ?? getClients().calendar
   const readCalendarId = opts.readCalendarId ?? process.env.JOSHUA421_READ_CALENDAR_ID ?? 'primary'
   const storeCalendarId = opts.storeCalendarId ?? process.env.JOSHUA421_CALENDAR_ID ?? 'primary'
@@ -100,20 +103,31 @@ export function makeGoogleDiary(
     async annotate(eventId: string, note: string): Promise<void> {
       const calendar = cal()
       const existing = await calendar.events.get({ calendarId: readCalendarId, eventId })
-      // Privacy backstop: an event with attendees is shared — patching its
-      // description syncs to every attendee's copy. Refuse; the note belongs in a
-      // private side-entry instead. (read_day marks these as `shared` so the
-      // conversation never proposes an in-place note for them.)
+      // Privacy backstop: never write in place where the description is visible to
+      // others. Attendees receive a synced copy; a public event is world-readable.
+      // (read_day marks attended events `shared` so the conversation avoids them.)
       if ((existing.data.attendees?.length ?? 0) > 0) {
         throw new Error(
           'refusing to annotate a shared event in place — its description would sync to every attendee. Use a private side-entry instead.',
         )
       }
+      if (existing.data.visibility === 'public') {
+        throw new Error(
+          'refusing to annotate a public event in place — its description is world-readable. Use a private side-entry instead.',
+        )
+      }
       const current = existing.data.description ?? ''
-      // Additive: keep the user's words; append under a single marker block.
-      const appended = current.includes(MARKER)
-        ? `${current}\n${note}`
-        : `${current}${current ? '\n\n' : ''}${MARKER}\n${note}`
+      // Our block is fenced BLOCK_BEGIN … BLOCK_END. Only treat an existing block
+      // as ours when there is EXACTLY one begin fence with a matching end fence;
+      // then insert the new note inside the fence, preserving any user text after
+      // it. Otherwise append a fresh fenced block — never mutating the user's words.
+      const beginIdx = current.indexOf(BLOCK_BEGIN)
+      const endIdx = beginIdx === -1 ? -1 : current.indexOf(BLOCK_END, beginIdx + BLOCK_BEGIN.length)
+      const secondBegin = beginIdx === -1 ? -1 : current.indexOf(BLOCK_BEGIN, beginIdx + BLOCK_BEGIN.length)
+      const ours = beginIdx !== -1 && endIdx !== -1 && secondBegin === -1
+      const appended = ours
+        ? `${current.slice(0, endIdx).replace(/\n+$/, '')}\n${note}\n${BLOCK_END}${current.slice(endIdx + BLOCK_END.length)}`
+        : `${current}${current ? '\n\n' : ''}${BLOCK_BEGIN}\n${note}\n${BLOCK_END}`
       await calendar.events.patch({
         calendarId: readCalendarId,
         eventId,
@@ -125,15 +139,19 @@ export function makeGoogleDiary(
       const calendar = cal()
       const existing = await calendar.events.get({ calendarId: readCalendarId, eventId })
       const current = existing.data.description ?? ''
-      // Remove ONLY our block, and only when the description matches exactly what
-      // annotate wrote: either "<user text>\n\n— joshua421 —…", or a description
-      // that is wholly ours ("— joshua421 —…"). Anything else is left untouched —
-      // we never risk the user's own words to undo our own note.
-      const sep = `\n\n${MARKER}`
-      let restored: string | undefined
-      if (current.includes(sep)) restored = current.slice(0, current.indexOf(sep))
-      else if (current.startsWith(MARKER)) restored = ''
-      if (restored === undefined) return
+      // Remove ONLY our fenced block, and only when it is unambiguously ours:
+      // exactly one begin fence, at a line boundary, with a matching end fence.
+      // Anything else (marker the user typed, missing fence, more than one) is a
+      // no-op — we never risk the user's own words to undo our own note.
+      const beginIdx = current.indexOf(BLOCK_BEGIN)
+      if (beginIdx === -1) return
+      if (current.indexOf(BLOCK_BEGIN, beginIdx + BLOCK_BEGIN.length) !== -1) return
+      if (beginIdx !== 0 && current[beginIdx - 1] !== '\n') return
+      const endIdx = current.indexOf(BLOCK_END, beginIdx + BLOCK_BEGIN.length)
+      if (endIdx === -1) return
+      const before = current.slice(0, beginIdx).replace(/\n+$/, '')
+      const after = current.slice(endIdx + BLOCK_END.length).replace(/^\n+/, '')
+      const restored = before + (before && after ? '\n\n' : '') + after
       await calendar.events.patch({
         calendarId: readCalendarId,
         eventId,
@@ -178,7 +196,12 @@ export function makeGoogleDiary(
       })
       for (const ev of res.data.items ?? []) {
         if (!ev.id) continue
-        if (ev.extendedProperties?.private?.joshua421 !== 'true') continue
+        const priv = ev.extendedProperties?.private ?? {}
+        // Independent guard (not merely the server filter): our tag, this kind,
+        // this exact date — so a broader/again-quirky list can never over-delete.
+        if (priv.joshua421 !== 'true' || priv.joshua421Kind !== 'day-summary' || priv.joshua421Date !== date) {
+          continue
+        }
         await calendar.events.delete({ calendarId: storeCalendarId, eventId: ev.id })
       }
     },

@@ -84,6 +84,14 @@ export function makeGoogleJournal(
     },
 
     async update(id: string, patch: Partial<NewEntry>): Promise<void> {
+      const client = cal()
+      // Only ever modify our OWN entries — never stamp/mutate a real event.
+      const existing = await client.events.get({ calendarId, eventId: id })
+      if (existing.data.extendedProperties?.private?.joshua421 !== 'true') {
+        throw new Error(
+          `refusing to update ${id}: not a joshua421-created entry — the Journal only modifies its own entries.`,
+        )
+      }
       const requestBody: calendar_v3.Schema$Event = {}
       if (patch.title !== undefined) requestBody.summary = patch.title
       if (patch.body !== undefined) requestBody.description = patch.body
@@ -92,12 +100,14 @@ export function makeGoogleJournal(
         requestBody.end = { date: nextDay(patch.date) }
       }
       if (patch.kind !== undefined || patch.date !== undefined || patch.tags !== undefined) {
-        const priv: Record<string, string> = { ...(patch.tags ?? {}) }
+        // Keep the joshua421='true' tag no matter what a patch carries, so an entry
+        // can never be silently un-tagged (and thus made unfindable/undeletable).
+        const priv: Record<string, string> = { joshua421: 'true', ...(patch.tags ?? {}) }
         if (patch.kind !== undefined) priv.joshua421Kind = patch.kind
         if (patch.date !== undefined) priv.joshua421Date = patch.date
         requestBody.extendedProperties = { private: priv }
       }
-      await cal().events.patch({ calendarId, eventId: id, requestBody })
+      await client.events.patch({ calendarId, eventId: id, requestBody })
     },
 
     async delete(id: string): Promise<void> {
