@@ -50,12 +50,18 @@ export function makeMemoryDiary(
 ): Diary & {
   readonly annotations: { eventId: string; note: string }[]
   readonly summaries: { date: string; summary: string }[]
+  readonly strips: string[]
+  readonly unwrites: string[]
 } {
   const annotations: { eventId: string; note: string }[] = []
   const summaries: { date: string; summary: string }[] = []
+  const strips: string[] = []
+  const unwrites: string[] = []
   return {
     annotations,
     summaries,
+    strips,
+    unwrites,
     async day() {
       return dayEvents
     },
@@ -64,6 +70,18 @@ export function makeMemoryDiary(
     },
     async writeSummary(date, summary) {
       summaries.push({ date, summary })
+    },
+    async stripAnnotation(eventId) {
+      strips.push(eventId)
+      for (let i = annotations.length - 1; i >= 0; i--) {
+        if (annotations[i].eventId === eventId) annotations.splice(i, 1)
+      }
+    },
+    async unwriteSummary(date) {
+      unwrites.push(date)
+      for (let i = summaries.length - 1; i >= 0; i--) {
+        if (summaries[i].date === date) summaries.splice(i, 1)
+      }
     },
   }
 }

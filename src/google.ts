@@ -51,16 +51,27 @@ export function googleCalendar() {
  * them, and write the day's summary as an all-day entry. Additive only: notes
  * are appended below a marker; the user's own words are never touched.
  */
-export function makeGoogleDiary(calendarClient?: calendar_v3.Calendar): Diary {
+export function makeGoogleDiary(
+  opts: {
+    calendar?: calendar_v3.Calendar
+    /** The user's real event calendar — read + annotated in place. */
+    readCalendarId?: string
+    /** joshua421's own store calendar — where CREATED artifacts (summaries) live. */
+    storeCalendarId?: string
+  } = {},
+): Diary {
   const MARKER = '— joshua421 —'
+  const cal = () => opts.calendar ?? getClients().calendar
+  const readCalendarId = opts.readCalendarId ?? process.env.JOSHUA421_READ_CALENDAR_ID ?? 'primary'
+  const storeCalendarId = opts.storeCalendarId ?? process.env.JOSHUA421_CALENDAR_ID ?? 'primary'
 
   return {
     async day(date: string): Promise<DayEvent[]> {
-      const calendar = calendarClient ?? getClients().calendar
+      const calendar = cal()
       const dayStart = new Date(`${date}T00:00:00`)
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
       const res = await calendar.events.list({
-        calendarId: 'primary',
+        calendarId: readCalendarId,
         timeMin: dayStart.toISOString(),
         timeMax: dayEnd.toISOString(),
         singleEvents: true,
@@ -87,8 +98,8 @@ export function makeGoogleDiary(calendarClient?: calendar_v3.Calendar): Diary {
     },
 
     async annotate(eventId: string, note: string): Promise<void> {
-      const calendar = calendarClient ?? getClients().calendar
-      const existing = await calendar.events.get({ calendarId: 'primary', eventId })
+      const calendar = cal()
+      const existing = await calendar.events.get({ calendarId: readCalendarId, eventId })
       // Privacy backstop: an event with attendees is shared — patching its
       // description syncs to every attendee's copy. Refuse; the note belongs in a
       // private side-entry instead. (read_day marks these as `shared` so the
@@ -104,20 +115,40 @@ export function makeGoogleDiary(calendarClient?: calendar_v3.Calendar): Diary {
         ? `${current}\n${note}`
         : `${current}${current ? '\n\n' : ''}${MARKER}\n${note}`
       await calendar.events.patch({
-        calendarId: 'primary',
+        calendarId: readCalendarId,
         eventId,
         requestBody: { description: appended },
       })
     },
 
+    async stripAnnotation(eventId: string): Promise<void> {
+      const calendar = cal()
+      const existing = await calendar.events.get({ calendarId: readCalendarId, eventId })
+      const current = existing.data.description ?? ''
+      // Remove ONLY our block, and only when the description matches exactly what
+      // annotate wrote: either "<user text>\n\n— joshua421 —…", or a description
+      // that is wholly ours ("— joshua421 —…"). Anything else is left untouched —
+      // we never risk the user's own words to undo our own note.
+      const sep = `\n\n${MARKER}`
+      let restored: string | undefined
+      if (current.includes(sep)) restored = current.slice(0, current.indexOf(sep))
+      else if (current.startsWith(MARKER)) restored = ''
+      if (restored === undefined) return
+      await calendar.events.patch({
+        calendarId: readCalendarId,
+        eventId,
+        requestBody: { description: restored },
+      })
+    },
+
     async writeSummary(date: string, summary: string): Promise<void> {
-      const calendar = calendarClient ?? getClients().calendar
-      // The day's diary entry: an all-day event holding the summary.
+      const calendar = cal()
+      // The day's diary entry: an all-day event holding the summary, on our store.
       const next = new Date(`${date}T00:00:00`)
       next.setDate(next.getDate() + 1)
       const endDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
       await calendar.events.insert({
-        calendarId: 'primary',
+        calendarId: storeCalendarId,
         requestBody: {
           summary: `Reflection · ${date}`,
           description: summary,
@@ -130,6 +161,26 @@ export function makeGoogleDiary(calendarClient?: calendar_v3.Calendar): Diary {
           },
         },
       })
+    },
+
+    async unwriteSummary(date: string): Promise<void> {
+      const calendar = cal()
+      // Find OUR tagged summaries for this date on the store calendar and remove
+      // them — double-guarded by the tag, so a real event can never be deleted.
+      const res = await calendar.events.list({
+        calendarId: storeCalendarId,
+        privateExtendedProperty: [
+          'joshua421=true',
+          'joshua421Kind=day-summary',
+          `joshua421Date=${date}`,
+        ],
+        singleEvents: true,
+      })
+      for (const ev of res.data.items ?? []) {
+        if (!ev.id) continue
+        if (ev.extendedProperties?.private?.joshua421 !== 'true') continue
+        await calendar.events.delete({ calendarId: storeCalendarId, eventId: ev.id })
+      }
     },
   }
 }
