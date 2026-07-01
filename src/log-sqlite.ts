@@ -6,7 +6,7 @@ import type { Reflection } from './core/reflection'
  * Behaviour-only by construction. There is deliberately NO content column —
  * the privacy promise is enforced by the schema, not by willpower.
  */
-const SCHEMA = `
+export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS reflections (
   id        TEXT PRIMARY KEY,
   date      TEXT NOT NULL,

@@ -37,10 +37,14 @@ function toEntry(ev: calendar_v3.Schema$Event): JournalEntry {
  */
 export function makeGoogleJournal(
   calendarId = process.env.JOSHUA421_CALENDAR_ID ?? 'primary',
+  calendarClient?: calendar_v3.Calendar,
 ): Journal {
+  // Resolved lazily inside each method, so constructing the adapter in a test
+  // (with an injected client) never builds a real OAuth client from env.
+  const cal = () => calendarClient ?? googleCalendar()
   return {
     async add(entry: NewEntry): Promise<JournalEntry> {
-      const res = await googleCalendar().events.insert({
+      const res = await cal().events.insert({
         calendarId,
         requestBody: {
           summary: entry.title,
@@ -66,7 +70,7 @@ export function makeGoogleJournal(
         ...(q.kind ? [`joshua421Kind=${q.kind}`] : []),
         ...Object.entries(q.tags ?? {}).map(([k, v]) => `${k}=${v}`),
       ]
-      const res = await googleCalendar().events.list({
+      const res = await cal().events.list({
         calendarId,
         privateExtendedProperty,
         singleEvents: true,
@@ -93,11 +97,20 @@ export function makeGoogleJournal(
         if (patch.date !== undefined) priv.joshua421Date = patch.date
         requestBody.extendedProperties = { private: priv }
       }
-      await googleCalendar().events.patch({ calendarId, eventId: id, requestBody })
+      await cal().events.patch({ calendarId, eventId: id, requestBody })
     },
 
     async delete(id: string): Promise<void> {
-      await googleCalendar().events.delete({ calendarId, eventId: id })
+      const client = cal()
+      // Only ever delete our OWN entries: verify the joshua421 tag first, so an
+      // injected or hallucinated id can never wipe one of the user's real events.
+      const existing = await client.events.get({ calendarId, eventId: id })
+      if (existing.data.extendedProperties?.private?.joshua421 !== 'true') {
+        throw new Error(
+          `refusing to delete ${id}: not a joshua421-created entry — the Journal only removes its own entries.`,
+        )
+      }
+      await client.events.delete({ calendarId, eventId: id })
     },
   }
 }

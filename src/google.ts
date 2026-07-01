@@ -1,4 +1,5 @@
 import { google } from 'googleapis'
+import type { calendar_v3 } from 'googleapis'
 import type { DayEvent, Diary, Mailer } from './core/deps'
 
 /**
@@ -50,12 +51,12 @@ export function googleCalendar() {
  * them, and write the day's summary as an all-day entry. Additive only: notes
  * are appended below a marker; the user's own words are never touched.
  */
-export function makeGoogleDiary(): Diary {
+export function makeGoogleDiary(calendarClient?: calendar_v3.Calendar): Diary {
   const MARKER = '— joshua421 —'
 
   return {
     async day(date: string): Promise<DayEvent[]> {
-      const { calendar } = getClients()
+      const calendar = calendarClient ?? getClients().calendar
       const dayStart = new Date(`${date}T00:00:00`)
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
       const res = await calendar.events.list({
@@ -86,7 +87,7 @@ export function makeGoogleDiary(): Diary {
     },
 
     async annotate(eventId: string, note: string): Promise<void> {
-      const { calendar } = getClients()
+      const calendar = calendarClient ?? getClients().calendar
       const existing = await calendar.events.get({ calendarId: 'primary', eventId })
       // Privacy backstop: an event with attendees is shared — patching its
       // description syncs to every attendee's copy. Refuse; the note belongs in a
@@ -110,7 +111,7 @@ export function makeGoogleDiary(): Diary {
     },
 
     async writeSummary(date: string, summary: string): Promise<void> {
-      const { calendar } = getClients()
+      const calendar = calendarClient ?? getClients().calendar
       // The day's diary entry: an all-day event holding the summary.
       const next = new Date(`${date}T00:00:00`)
       next.setDate(next.getDate() + 1)
@@ -122,6 +123,11 @@ export function makeGoogleDiary(): Diary {
           description: summary,
           start: { date },
           end: { date: endDate },
+          // Tag our own creation so it's findable (privateExtendedProperty) and
+          // reversible — never confused with one of the user's real events.
+          extendedProperties: {
+            private: { joshua421: 'true', joshua421Kind: 'day-summary', joshua421Date: date },
+          },
         },
       })
     },
