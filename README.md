@@ -42,8 +42,8 @@ privacy model, the calendar-as-database direction, and the roadmap (built vs pla
 
 ## Architecture (one breath)
 
-A TypeScript **core engine** behind ports (Source · Reflect · Notify · Mailer ·
-Diary · Log · Preferences), with two entrypoints — an **MCP** your LLM calls, and a
+A TypeScript **core engine** behind ports (Reflect · Mailer · Diary · Log ·
+Preferences · Journal), with two entrypoints — an **MCP** your LLM calls, and a
 scheduled **worker** for the emails. Adapters: **Google Workspace** (calendar
 read/write, Gmail send-only), the **Claude reflector** (Opus 4.8), a **SQLite** log,
 **file-backed** preferences. The **`Diary` port is the "surface we modify"** —
@@ -64,3 +64,16 @@ and local paths. Current state vs. roadmap: **DESIGN.md → Status**.
 
 **Dogfood first** — me, my own tokens, no account system. Onboarding others (their
 token custody, minimal scopes, hosting) is a deliberate, later step.
+
+## License & use
+
+joshua421 is a gift: **free for noncommercial use** — individuals; personal, study,
+and hobby use; religious observance; and any charitable, educational, research,
+health, or government organization, regardless of funding.
+
+**Commercial use requires written permission.** If you'd like to use joshua421
+commercially, please get in touch to arrange terms.
+
+Licensed under the **PolyForm Noncommercial License 1.0.0** — see [LICENSE](./LICENSE)
+and [NOTICE](./NOTICE). If you build on or share it, keep the licence and the
+`Required Notice` with it. *(Plain intent, not legal advice; the LICENSE text governs.)*

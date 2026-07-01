@@ -6,6 +6,9 @@ grounding.md
 *.sqlite-journal
 .DS_Store
 
+# Private strategy notes (e.g. the paid / hosted direction) — never committed
+*.notes.md
+
 # Tool-dropped Agent Skills — not part of this project
 .agents/
 skills-lock.json

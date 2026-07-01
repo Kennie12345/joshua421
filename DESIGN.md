@@ -174,23 +174,26 @@ sits on top of calendar-as-database without changing the ports or the engine: th
 `Diary` adapter gains "attach" and "mark significant," and rollups filter by the
 significance tag.
 
-## Where it runs (today → future)
+## Where it runs
 
 - **Today:** your own LLM. In **Claude Desktop**, joshua421's tools are connected,
   so the full loop (reflect → write the diary) works there.
 - The email's **web links** open claude.ai / chatgpt.com — they give the
   *reflection*, but those web apps don't have joshua421's local tools, so they
   **can't write the diary**. Desktop is where the writing happens now.
-- **Future:** our **website with an embedded LLM + the tools together**, so the
-  email link lands somewhere that can actually modify the diary — for anyone. That
-  is the hosted step.
+
+This repo is the **MCP / self-host** version — the free, open build, and the one we
+build first. A hosted web app that closes the write loop for non-technical users
+(the email link landing somewhere that can actually modify the diary, for anyone) is
+a separate **paid** direction, tracked privately outside this repo.
 
 ## Scope
 
-**Dogfood first** — Kenneth, own tokens, no account system. Onboarding anyone else
-means holding *their* Google OAuth token (their whole calendar/inbox) — token
-custody and minimal scopes become first-class work, a hard tripwire, not
-refactor-later.
+**Dogfood first** — Kenneth, own tokens, no account system. A second self-host user
+can bring their **own** Google OAuth (BYO), so we never hold their tokens. The moment
+*we* hold anyone's token — the hosted paid tier — it becomes a hard tripwire: token
+custody, minimal scopes, OAuth verification, breach liability — first-class work, not
+refactor-later. That work lives with the paid/hosted notes, not here.
 
 ## Status — built vs. planned
 
@@ -219,22 +222,55 @@ refactor-later.
 - **Preferences** — a local file **for now** (ships present value, behind the
   `Preferences` port); migrates to a calendar entry at the Journal cutover.
 
-**Planned (in order):**
-1. **Invariant tests** *(the gate)* — in-memory Journal + fake Log + an anchor
-   test: recording "a reflection happened" yields an *empty-body* entry; content
-   only ever flows the content path. Written *before* the seam re-cut, because the
-   cutover trades a structural guarantee (the Log has no content column) for a
-   disciplinary one (markers and content share one Journal `add`).
-2. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the
-   store calendar); `Diary` shrinks to read + in-place annotate; side-entries
-   become Journal entries; idempotent `upsert(kind, periodKey, entry)`; delete
-   guarded to `joshua421=true`; pagination (the 2500-cap bug), tz-immune day
-   windows, read-after-write by id.
-3. **Privacy-aware diary CRUD** — write-in-place *or* side-entry; full CRUD; every
+**Planned — MCP / self-host first (the free, open build):**
+
+*The gate:*
+1. **Invariant tests** — in-memory Journal + fake Log + an anchor test: recording
+   "a reflection happened" yields an *empty-body* entry; content only ever flows the
+   content path. Written *before* the seam re-cut, because the cutover trades a
+   structural guarantee (the Log has no content column) for a disciplinary one
+   (markers and content share one Journal `add`).
+
+*Near-term, no hosting required (surfaced by the 7-persona / path-to-9 review):*
+2. **Private surface + delete guard** — route the *active* `Diary` off `primary`
+   (honour `JOSHUA421_CALENDAR_ID`, default a dedicated calendar); guard `delete()`
+   to `joshua421=true` (today it's unguarded on default-primary — a prompt-injection
+   → real-meeting-deletion risk). Small, high-trust, mostly independent of the seam.
+3. **Cadence that breathes** — drive the schedule off the `regularity` preference
+   (not the hardcoded 07:00/20:00); read the Log in `composeDayEmail` and skip/soften
+   when today already has a reflection; grace-toned backoff after N unopened sends;
+   silent on the sabbath; a one-tap "less often" link. Kills the "unopened guilt
+   pile" failure mode.
+4. **Doctrinal spine + an exit off the screen** — feed an external plumb line
+   (lectionary / office reading + the user's rule of life) so reflection is anchored
+   to Scripture, not only the self; restore the examen movement (conviction →
+   confession → repentance → assurance); end each reflection by handing off to
+   silence and a named human. Prompt work; no engine reshape.
+
+*Structural (the calendar-as-database keystone):*
+5. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the
+   store calendar); `Diary` shrinks to read + in-place annotate; side-entries become
+   Journal entries; idempotent `upsert(kind, periodKey, entry)`; pagination (the
+   2500-cap bug), tz-immune day windows, read-after-write by id. (Folds in #2's guard.)
+6. **Privacy-aware diary CRUD** — write-in-place *or* side-entry; full CRUD; every
    write approved in chat; delete limited to joshua421-created entries.
-4. **Emails reworked** — morning *setup* (now also using yesterday's summary, read
-   back from the Journal) and evening *summary* (stored in the calendar).
-5. **Cut `Log` + `Preferences` over to the Journal** (keystone built) and add the
-   rollup jobs — storage becomes the calendar, behind the same ports.
-6. **Later** — more surfaces (habit / notes / reminder apps); the hosted website
-   with an embedded LLM.
+7. **Make the memorial *felt* + rollups** — wire the already-written `look-back`
+   prompt + `Log.streak()` into a recurring "look how faithful God has been" digest;
+   the morning email reads back yesterday's summary (needs the Journal read-back from
+   #5). The intrinsic pull that replaces the streak hook without guilt — watch the
+   knife-edge: presence-as-grace, never a scorecard-with-a-cross. Add the daily →
+   weekly → monthly → season rollup jobs here.
+8. **Cut `Log` + `Preferences` over to the Journal** — storage becomes the calendar,
+   behind the same ports (keystone already built).
+
+*Multi-user without hosting:*
+9. **BYO-OAuth / self-host template** — a second user brings their own Google OAuth
+   and holds their own tokens; the service never holds a raw refresh token. The
+   un-gated route to real user #2 and the experiment platform for the retention/tone
+   bets.
+
+**Later — more surfaces** (habit / notes / reminder apps), each a new `Diary` adapter.
+
+**Paid / hosted — tracked privately, not in this repo:** the hosted embedded-LLM web
+app that closes the write loop for non-technical users. See the gitignored
+`*.notes.md` (hosted-paid notes).
