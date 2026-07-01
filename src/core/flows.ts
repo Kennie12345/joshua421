@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
+import { companionFrame } from './persona'
 
 /**
  * ISO local day (YYYY-MM-DD) for a Date. Local calendar fields so the record
@@ -76,11 +77,18 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
   const questions = (await deps.reflect(kind, { notes: context })).text.trim()
 
   // A starter they can take to ANY assistant, with deep links for the common ones.
-  const opener =
-    kind === 'morning'
-      ? 'I want to reflect on the day ahead and orient it toward God. Questions I am holding:'
-      : 'I want to reflect on my day and notice where God was in it. Questions I am holding:'
-  const starter = `${opener}\n\n${questions}`
+  // It carries the companion FRAME (so a persona-less web assistant reflects in
+  // character) plus the actual day (so it has particulars to reflect on) — the two
+  // things the raw questions alone can't supply.
+  const starter = [
+    companionFrame(kind),
+    '',
+    `My day (${today}):`,
+    dayList,
+    '',
+    "Questions I'm holding:",
+    questions,
+  ].join('\n')
   const claudeLink = `https://claude.ai/new?q=${encodeURIComponent(starter)}`
   const chatgptLink = `https://chatgpt.com/?q=${encodeURIComponent(starter)}`
 

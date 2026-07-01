@@ -8,6 +8,7 @@ import { makeSqliteLog } from './log-sqlite'
 import { makeClaudeReflector } from './claude'
 import { makeGoogleDiary, makeGoogleMailer } from './google'
 import { makeFileGrounding } from './grounding-file'
+import { COMPANION_INSTRUCTIONS } from './core/persona'
 
 /**
  * ENTRYPOINT 1 — a thin stdio MCP server. Wires concrete adapters into the same
@@ -32,7 +33,12 @@ const deps: Deps = {
   clock: () => new Date(),
 }
 
-const server = new McpServer({ name: 'joshua421', version: '0.1.0' })
+// The `instructions` are injected into the host LLM as context about this server,
+// so the WHOLE conversation is in character — not just the moment a tool fires.
+const server = new McpServer(
+  { name: 'joshua421', version: '0.1.0' },
+  { instructions: COMPANION_INSTRUCTIONS },
+)
 
 // ── reflect on the day in conversation, then weave approved notes into the calendar ──
 
