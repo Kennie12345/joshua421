@@ -3,20 +3,18 @@ import cron from 'node-cron'
 import type { Deps } from './core/deps'
 import { composeDayEmail } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
-import { makeClaudeReflector } from './claude'
 import { makeFileGrounding } from './grounding-file'
 import { makeGoogleDiary, makeGoogleMailer } from './google'
 
 /**
- * ENTRYPOINT 2 — the scheduled engine. Two daily emails that list the day and
- * ask how to orient it to God, then point the user to reflect with their own
- * LLM. The reflecting happens there; the email is the nudge.
+ * ENTRYPOINT 2 — the scheduled engine. Two daily nudge-emails that list the day
+ * and point the user into a reflective conversation with their own LLM. The
+ * questions arise there, in the conversation; the email is only the nudge.
  *
  *   one-shot:  `worker <job>`   runs one job and exits → the launchd agents.
  *   daemon:    `worker`         keeps node-cron alive → handy for `npm run worker`.
  */
 const deps: Deps = {
-  reflect: makeClaudeReflector(),
   mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),
@@ -24,7 +22,7 @@ const deps: Deps = {
   clock: () => new Date(),
 }
 
-// The two daily jobs — each composes and sends one question-email.
+// The two daily jobs — each composes and sends one nudge-email.
 const JOBS: Record<string, (d: Deps) => Promise<unknown>> = {
   morning: (d) => composeDayEmail('morning', d),
   evening: (d) => composeDayEmail('evening', d),

@@ -42,13 +42,17 @@ privacy model, the calendar-as-database direction, and the roadmap (built vs pla
 
 ## Architecture (one breath)
 
-A TypeScript **core engine** behind ports (Reflect · Mailer · Diary · Log ·
-Preferences · Journal), with two entrypoints — an **MCP** your LLM calls, and a
-scheduled **worker** for the emails. Adapters: **Google Workspace** (calendar
-read/write, Gmail send-only), the **Claude reflector** (Opus 4.8), a **SQLite** log,
-**file-backed** preferences. The **`Diary` port is the "surface we modify"** —
-calendar today, more apps later as new adapters. *(The calendar may become the
-single store — see DESIGN.md.)*
+A TypeScript **core engine** behind ports (Mailer · Diary · Log · Preferences ·
+Journal), with two entrypoints — an **MCP** your LLM calls, and a scheduled
+**worker** for the emails. Adapters: **Google Workspace** (calendar read/write,
+Gmail send-only), a **SQLite** log, **file-backed** preferences. The **`Diary`
+port is the "surface we modify"** — calendar today, more apps later as new
+adapters. *(The calendar may become the single store — see DESIGN.md.)*
+
+**Provider-agnostic by design:** joshua421 makes no model calls of its own. The
+reflecting happens in *your* assistant — Claude Desktop, ChatGPT, a local LLM, any
+MCP-capable client — so you bring whichever provider you like. joshua421 is just
+tools, a persona, and a write-surface.
 
 ## Run it
 
@@ -57,8 +61,9 @@ single store — see DESIGN.md.)*
 - `npm run worker` — the scheduled emails (or the launchd agents in
   `~/Library/LaunchAgents/com.joshua421.*`).
 
-Config lives in `.env` (see `.env.example`): your Google OAuth, `ANTHROPIC_API_KEY`,
-and local paths. Current state vs. roadmap: **DESIGN.md → Status**.
+Config lives in `.env` (see `.env.example`): your Google OAuth and local paths —
+no LLM key, since joshua421 calls no model itself. Current state vs. roadmap:
+**DESIGN.md → Status**.
 
 ## Scope
 

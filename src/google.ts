@@ -208,18 +208,40 @@ export function makeGoogleDiary(
   }
 }
 
-async function sendSelfEmail(subject: string, body: string): Promise<void> {
+async function sendSelfEmail(subject: string, body: string, html?: string): Promise<void> {
   const { gmail } = getClients()
   const address = process.env.GOOGLE_USER_EMAIL
   if (!address) throw new Error('google mailer: set GOOGLE_USER_EMAIL in .env')
-  const headers = [
+  const baseHeaders = [
     `From: ${address}`,
     `To: ${address}`,
     `Subject: ${encodeMailHeader(subject)}`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset="UTF-8"',
   ]
-  const message = `${headers.join('\r\n')}\r\n\r\n${body}`
+  let message: string
+  if (html) {
+    // multipart/alternative: the plain-text part is the fallback (and what
+    // clients that don't render HTML show); the HTML part carries anchor links.
+    // A fixed boundary is fine — headers are ASCII and it never collides with
+    // the text bodies below.
+    const boundary = 'joshua421bnd'
+    message = [
+      ...baseHeaders,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      '',
+      body,
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      '',
+      html,
+      `--${boundary}--`,
+    ].join('\r\n')
+  } else {
+    message = `${[...baseHeaders, 'Content-Type: text/plain; charset="UTF-8"'].join('\r\n')}\r\n\r\n${body}`
+  }
   const raw = Buffer.from(message, 'utf8')
     .toString('base64')
     .replace(/\+/g, '-')
@@ -233,7 +255,7 @@ async function sendSelfEmail(subject: string, body: string): Promise<void> {
   }
 }
 
-/** Sends a plain email to the user (custom subject + body). Send-only scope. */
+/** Sends an email to the user (subject + text, optional HTML part). Send-only scope. */
 export function makeGoogleMailer(): Mailer {
-  return (subject, body) => sendSelfEmail(subject, body)
+  return (subject, body, html) => sendSelfEmail(subject, body, html)
 }

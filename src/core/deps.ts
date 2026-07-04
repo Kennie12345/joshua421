@@ -1,30 +1,13 @@
 import type { Grounding } from './grounding'
 import type { Log } from './log'
-import type { Note, ReflectionKind } from './reflection'
-
-/** A calendar event, source-agnostic and content-light by design. */
-export interface SourceEvent {
-  id: string
-  title: string
-  start: Date
-  end?: Date
-}
 
 /**
- * Material read LIVE from a source (calendar / diary / email) and used in the
- * moment, then discarded. Never persisted to the log.
+ * Sends an email to the user — custom subject and body. `body` is the plain-text
+ * part (always sent, and the universal fallback); an optional `html` part rides
+ * alongside as multipart/alternative so clients that render it show links behind
+ * anchor text instead of raw URLs.
  */
-export interface SourceContext {
-  event?: SourceEvent
-  /** Free text gathered live for reflection (diary, notes, the day's emails). */
-  notes?: string
-}
-
-/** Turns live context into a note (the words offered). Implemented by the LLM. */
-export type Reflect = (kind: ReflectionKind, context: SourceContext) => Promise<Note>
-
-/** Sends a plain email to the user — custom subject and body. */
-export type Mailer = (subject: string, body: string) => Promise<void>
+export type Mailer = (subject: string, body: string, html?: string) => Promise<void>
 
 /** A calendar entry seen as a diary entry — title, time, and its current notes. */
 export interface DayEvent {
@@ -64,7 +47,6 @@ export type Clock = () => Date
 
 /** Everything a flow needs, injected — the seam the two entrypoints wire up. */
 export interface Deps {
-  reflect: Reflect
   mailer: Mailer
   diary: Diary
   grounding: Grounding

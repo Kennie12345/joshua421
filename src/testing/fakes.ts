@@ -124,7 +124,6 @@ export function makeMemoryJournal(): Journal & { readonly entries: JournalEntry[
 /** A minimal Deps with in-memory doubles; pass overrides to inspect a surface. */
 export function makeDeps(overrides: Partial<Deps> = {}): Deps {
   return {
-    reflect: async (kind) => ({ kind, text: '' }),
     mailer: async () => {},
     diary: makeMemoryDiary(),
     grounding: { async get() { return null }, async set() {} },

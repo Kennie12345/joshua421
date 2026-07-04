@@ -100,16 +100,31 @@ joshua421 stores — by your explicit choice — because grounding requires memo
 
 ## Architecture
 
-- Pure `core/` engine behind ports: **Reflect, Mailer, Diary, Log, Preferences**,
-  and the **Journal** store (calendar-as-database).
+- Pure `core/` engine behind ports: **Mailer, Diary, Log, Preferences**, and the
+  **Journal** store (calendar-as-database).
 - Two entrypoints: `mcp.ts` (interactive — your LLM calls the tools) and
   `worker.ts` (scheduled — the emails).
-- Adapters: **Google Workspace** (calendar read/write, Gmail send-only), the
-  **Claude reflector** (Opus 4.8), a **SQLite** log, **file-backed** preferences.
+- Adapters: **Google Workspace** (calendar read/write, Gmail send-only), a
+  **SQLite** log, **file-backed** preferences.
 - `env.ts` resolves `.env` and paths by **file location, not cwd** (MCP hosts
   spawn with an unpredictable working directory).
 - The **`Diary` port is the "surface we modify"** seam — future surfaces are new
   adapters, no core reshape.
+
+### Provider-agnostic (no model of our own)
+
+joshua421 **makes no LLM calls of its own.** The reflecting happens in *your*
+assistant — Claude Desktop, ChatGPT, a local LLM, any MCP-capable client — which
+reads the persona (`core/persona.ts`, shipped as the MCP server's `instructions`)
+and calls the tools. So the provider is always the user's choice; nothing here is
+tied to one vendor. The worker's emails are pure templating, not model output.
+
+The one future case that would need a server-side call is **headless rollups**
+(daily→weekly→monthly summaries run on a schedule, with no assistant present). Keep
+that agnostic too: a small **summariser port** with a **configurable
+OpenAI-compatible adapter** (base-URL + model), which speaks to OpenAI, Ollama, LM
+Studio, OpenRouter, or a local endpoint — the user points it at whatever they run.
+No vendor SDK baked in. *(Not built; when it is, this is the seam.)*
 
 ## The calendar as the database (leading direction)
 

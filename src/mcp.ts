@@ -5,10 +5,9 @@ import type { Deps } from './core/deps'
 import { z } from 'zod'
 import { readDay, applyDayNotes, isoDay } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
-import { makeClaudeReflector } from './claude'
 import { makeGoogleDiary, makeGoogleMailer } from './google'
 import { makeFileGrounding } from './grounding-file'
-import { COMPANION_INSTRUCTIONS } from './core/persona'
+import { COMPANION_INSTRUCTIONS, FIXED_CENTRE } from './core/persona'
 
 /**
  * ENTRYPOINT 1 — a thin stdio MCP server. Wires concrete adapters into the same
@@ -20,12 +19,10 @@ import { COMPANION_INSTRUCTIONS } from './core/persona'
 // stdout, where it would corrupt the protocol). No secrets, just presence.
 console.error(
   `[joshua421] boot · cwd=${process.cwd()} · db=${process.env.JOSHUA421_DB} · ` +
-    `anthropic=${process.env.ANTHROPIC_API_KEY ? 'set' : 'MISSING'} · ` +
     `google=${process.env.GOOGLE_REFRESH_TOKEN ? 'set' : 'MISSING'}`,
 )
 
 const deps: Deps = {
-  reflect: makeClaudeReflector(),
   mailer: makeGoogleMailer(),
   diary: makeGoogleDiary(),
   grounding: makeFileGrounding(),
@@ -46,11 +43,10 @@ server.registerTool(
   'read_day',
   {
     description:
-      "Read the day's calendar entries so you can reflect WITH the user on their day. " +
-      "Reflect from THIS day and the user's own words — never generic. Any encouraging note " +
-      'you draft must name a concrete particular of the day; no Christianese, no platitudes, ' +
-      'no emoji, no formulaic shape. Propose the notes (and a short day summary) to the user, ' +
-      'and only call apply_day_notes with what they approve. Defaults to today.',
+      "Read the day's calendar entries so you can reflect WITH the user on their day — " +
+      "from THIS day and the user's own words, never generic. Propose what you draft, then " +
+      'call apply_day_notes to weave in their choices. Defaults to today. ' +
+      FIXED_CENTRE,
     inputSchema: { date: z.string().optional() },
   },
   async ({ date }) => {
@@ -65,8 +61,11 @@ server.registerTool(
   {
     description:
       'Write the user-APPROVED notes into their calendar (additive — appended under a marker, ' +
-      "never rewriting their words), plus an optional day summary as an all-day entry. Only " +
-      'call this with notes the user has explicitly approved.',
+      "never rewriting their words), plus an optional day summary as an all-day entry. The " +
+      'content may be a gentle note drafted together, the user\'s own words saved verbatim, or — ' +
+      'if they want to reflect in their diary themselves — the chosen reflection\'s questions, ' +
+      'placed in the notes for them to answer. ' +
+      FIXED_CENTRE,
     inputSchema: {
       date: z.string(),
       notes: z.array(z.object({ eventId: z.string(), note: z.string() })),
