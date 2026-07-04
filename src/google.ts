@@ -47,6 +47,31 @@ export function googleCalendar() {
 }
 
 /**
+ * True when `timeZone` renders `instant` with the same wall-clock minute as the
+ * RFC3339 string. Used to drop an event-definition zone that contradicts the
+ * calendar's rendering, rather than serving the contradiction.
+ */
+function zoneRendersWallClock(instant: Date, rfc3339: string, timeZone: string): boolean {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(instant)
+    const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? ''
+    const hour = get('hour') === '24' ? '00' : get('hour') // some ICU builds render midnight as 24
+    const rendered = `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`
+    return rendered === rfc3339.slice(0, 16)
+  } catch {
+    return false // unknown zone id — claim nothing rather than mislabel
+  }
+}
+
+/**
  * The calendar AS a diary — read the day's entries, weave APPROVED notes into
  * them, and write the day's summary as an all-day entry. Additive only: notes
  * are appended below a marker; the user's own words are never touched.
@@ -71,6 +96,10 @@ export function makeGoogleDiary(
   return {
     async day(date: string): Promise<DayEvent[]> {
       const calendar = cal()
+      // Host-zone boundary: this window is HOST-local midnight-to-midnight —
+      // correct while everything runs on the user's own machine (launchd). If
+      // the worker ever moves to a box in another zone, day selection must
+      // become user-zone aware; the wall-clock fields below already are.
       const dayStart = new Date(`${date}T00:00:00`)
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
       const res = await calendar.events.list({
@@ -89,10 +118,27 @@ export function makeGoogleDiary(
             ? new Date(`${ev.start.date}T00:00:00`)
             : undefined
         if (!start) continue
+        // Keep the calendar's own rendering of the start, verbatim: dateTime
+        // carries the calendar's UTC offset; an all-day entry stays a bare date
+        // (fabricating T00:00:00 would masquerade as a real midnight event).
+        // `start` as a Date is only an instant — formatted anywhere else it
+        // silently becomes the HOST's zone, not the user's.
+        const startLocal = ev.start?.dateTime ?? ev.start?.date ?? undefined
+        // Google's start.timeZone is the zone the event was DEFINED in, while
+        // dateTime is rendered in the CALENDAR's zone — they disagree for e.g.
+        // an Adelaide-defined event on a Sydney calendar. Only pass the zone on
+        // when it actually renders startLocal's wall-clock; a contradictory
+        // label is worse than none.
+        const zone =
+          ev.start?.dateTime && ev.start?.timeZone && zoneRendersWallClock(start, ev.start.dateTime, ev.start.timeZone)
+            ? ev.start.timeZone
+            : undefined
         events.push({
           id: ev.id,
           title: ev.summary ?? '(untitled)',
           start,
+          ...(startLocal ? { startLocal } : {}),
+          ...(zone ? { timeZone: zone } : {}),
           shared: (ev.attendees?.length ?? 0) > 0,
           ...(ev.description ? { description: ev.description } : {}),
         })

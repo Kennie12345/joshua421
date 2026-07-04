@@ -57,6 +57,63 @@ function fakeCalendar(
   return { cal, calls, state }
 }
 
+test("day() carries the calendar's own wall-clock and zone — never just a bare UTC instant", async () => {
+  const listItems: calendar_v3.Schema$Event[] = [
+    {
+      id: 'e1',
+      summary: 'GCB mens group',
+      start: { dateTime: '2026-07-02T23:00:00+10:00', timeZone: 'Australia/Sydney' },
+    },
+    { id: 'e2', summary: 'Sabbath', start: { date: '2026-07-02' } },
+  ]
+  const { cal } = fakeCalendar({ listItems })
+  const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ' })
+
+  const events = await diary.day('2026-07-02')
+
+  // A Sydney 23:00 must survive as the calendar's own wall-clock — as a Date
+  // alone it is 13:00Z, and every reader outside AEST would misreport the
+  // user's evening. Sydney in July renders 13:00Z as 23:00, so the zone agrees
+  // with the rendering and is passed through.
+  assert.equal(events[0].startLocal, '2026-07-02T23:00:00+10:00')
+  assert.equal(events[0].timeZone, 'Australia/Sydney')
+  // An all-day entry stays a bare date, verbatim — never fabricated into a
+  // midnight that would masquerade as a timed event. No zone claimed.
+  assert.equal(events[1].startLocal, '2026-07-02')
+  assert.equal(events[1].timeZone, undefined)
+})
+
+test('day() drops an event-definition zone that contradicts the calendar rendering', async () => {
+  // Google renders dateTime in the CALENDAR's zone but start.timeZone is the
+  // zone the event was DEFINED in. Found live on the dogfood calendar: an
+  // Adelaide-defined event rendered at +10:00 (Adelaide is +9:30 in July — the
+  // labeled zone would misread the digits by 30 minutes), and the same for a
+  // meeting created in New York. A contradictory label is worse than none.
+  const listItems: calendar_v3.Schema$Event[] = [
+    {
+      id: 'adelaide',
+      summary: 'Adelaide call',
+      start: { dateTime: '2026-07-02T14:00:00+10:00', timeZone: 'Australia/Adelaide' },
+    },
+    {
+      id: 'ny',
+      summary: 'NY sync',
+      start: { dateTime: '2026-07-03T11:00:00+10:00', timeZone: 'America/New_York' },
+    },
+  ]
+  const { cal } = fakeCalendar({ listItems })
+  const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ' })
+
+  const events = await diary.day('2026-07-02')
+
+  // The wall-clock (what the user's calendar grid shows) survives verbatim…
+  assert.equal(events[0].startLocal, '2026-07-02T14:00:00+10:00')
+  assert.equal(events[1].startLocal, '2026-07-03T11:00:00+10:00')
+  // …but the disagreeing zones are dropped, not served as contradictions.
+  assert.equal(events[0].timeZone, undefined)
+  assert.equal(events[1].timeZone, undefined)
+})
+
 test('day() reads the READ calendar; writeSummary writes the STORE calendar, tagged', async () => {
   const { cal, calls } = fakeCalendar()
   const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ', storeCalendarId: 'STORE' })

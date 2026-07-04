@@ -52,7 +52,16 @@ server.registerTool(
   async ({ date }) => {
     const day = date ?? isoDay(new Date())
     const [events, goals] = await Promise.all([readDay(day, deps), deps.grounding.get()])
-    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events }, null, 2) }] }
+    // Present each event as the user's CALENDAR renders it (startLocal), never
+    // as a bare UTC instant — JSON.stringify would render a Sydney 23:00 event as
+    // "13:00Z", and the host LLM would tell the user "1pm", ten hours wrong.
+    // timeZone rides along only when it agrees with that rendering (see deps.ts).
+    const shaped = events.map(({ start, startLocal, timeZone, ...rest }) => ({
+      ...rest,
+      start: startLocal ?? start.toISOString(),
+      ...(timeZone ? { timeZone } : {}),
+    }))
+    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events: shaped }, null, 2) }] }
   },
 )
 

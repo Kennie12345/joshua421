@@ -14,6 +14,24 @@ export interface DayEvent {
   id: string
   title: string
   start: Date
+  /**
+   * The start as the user's CALENDAR renders it, verbatim from the source —
+   * RFC3339 with the calendar's UTC offset ("2026-07-02T23:00:00+10:00"), or a
+   * bare date ("2026-07-02") for an all-day entry. `start` alone is a bare
+   * instant — anything that formats it localizes to the HOST's zone, which is
+   * wrong the moment the reader (an LLM given the ISO string, or a worker on a
+   * cloud box) isn't in the user's zone. Prefer this for anything user-facing.
+   */
+  startLocal?: string
+  /**
+   * IANA zone ("Australia/Sydney") — included ONLY when it renders the same
+   * wall-clock as startLocal. Google returns the event-DEFINITION zone, which
+   * can differ from the calendar's rendering zone (a meeting created in New
+   * York; an Adelaide event on a Sydney calendar) — pairing those verbatim
+   * would label the wall-clock with the wrong zone, so a disagreeing zone is
+   * dropped rather than served as a contradiction.
+   */
+  timeZone?: string
   description?: string
   /** True if the event has other attendees — writing into it in place would
    *  leak the note to everyone, so it must be shaped via a private side-entry. */

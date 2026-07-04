@@ -44,9 +44,19 @@ export async function applyDayNotes(
   return reflection
 }
 
-/** A short clock label for an event time (e.g. "09:30"). */
-function eventTime(d: Date): string {
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/**
+ * A short clock label (e.g. "09:30") for an event — as the user's CALENDAR
+ * renders it. startLocal is the calendar's wall-clock string
+ * ("2026-07-02T23:00:00+10:00"), so the label is sliced straight out of it;
+ * formatting the Date instead would localize to wherever the worker happens to
+ * run, and a Sydney 23:00 event would read "13:00" the day this moves to a UTC
+ * box. A bare-date startLocal is an all-day entry — no clock to print.
+ */
+function eventClock(e: DayEvent): string {
+  if (e.startLocal) {
+    return e.startLocal.length >= 16 ? e.startLocal.slice(11, 16) : 'all day'
+  }
+  return e.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 /** Escape text for safe interpolation into HTML (event titles etc. are user data). */
@@ -70,12 +80,17 @@ function htmlLines(s: string): string {
  * carries opens the assistant question-first.
  */
 export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): Promise<void> {
+  // Host-zone boundary: "today" here (and day()'s query window behind it) is
+  // the HOST's local day — correct while the worker runs on the user's own
+  // machine (launchd), where host zone == user zone. Moving the worker to a
+  // box in another zone requires user-zone day selection first; the per-event
+  // wall-clock labels below are already host-independent.
   const today = isoDay(deps.clock())
   const events = await deps.diary.day(today)
 
   // Deterministic day list — the assistant never invents events.
   const dayList = events.length
-    ? events.map((e) => `• ${eventTime(e.start)} — ${e.title}`).join('\n')
+    ? events.map((e) => `• ${eventClock(e)} — ${e.title}`).join('\n')
     : '(nothing on your calendar today)'
 
   // A starter they can take to ANY assistant, with deep links for the common ones.

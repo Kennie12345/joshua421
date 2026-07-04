@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyDayNotes } from './flows'
+import { applyDayNotes, composeDayEmail } from './flows'
 import { makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
 
 /**
@@ -57,4 +57,61 @@ test('applyDayNotes with no notes and no summary records exactly one reflection,
   assert.equal(log.rows.length, 1)
   assert.equal(diary.annotations.length, 0)
   assert.equal(diary.summaries.length, 0)
+})
+
+test("composeDayEmail prints the calendar's wall-clock label, never a host-localized time", async () => {
+  // NB: the label is host-independent; day SELECTION (isoDay + day()'s window)
+  // is still host-zone — see the boundary note in composeDayEmail. The suite
+  // runs under TZ=UTC (package.json) so this would fail on the old
+  // toLocaleTimeString path, which rendered this event as 13:00.
+  const sent: string[] = []
+  // A Sydney 23:00 event: as a bare Date it is 13:00Z, so a host anywhere but
+  // AEST would print the wrong evening. The wall-clock must come from startLocal.
+  const diary = makeMemoryDiary([
+    {
+      id: 'e1',
+      title: 'GCB mens group',
+      start: new Date('2026-07-02T13:00:00.000Z'),
+      startLocal: '2026-07-02T23:00:00+10:00',
+      timeZone: 'Australia/Sydney',
+      shared: false,
+    },
+    {
+      id: 'e2',
+      title: 'Sabbath',
+      start: new Date('2026-07-02T00:00:00'),
+      startLocal: '2026-07-02',
+      shared: false,
+    },
+  ])
+  const deps = makeDeps({
+    diary,
+    mailer: async (_subject, body) => {
+      sent.push(body)
+    },
+  })
+
+  await composeDayEmail('evening', deps)
+
+  assert.ok(sent[0].includes('23:00 — GCB mens group'), 'must print the calendar’s own wall-clock')
+  assert.ok(!sent[0].includes('13:00'), 'must never leak the bare UTC instant')
+  assert.ok(sent[0].includes('all day — Sabbath'), 'an all-day entry gets no fabricated midnight')
+})
+
+test('the nudge never wields a scorecard — grace-not-guilt is asserted, not hoped', async () => {
+  const sent: string[] = []
+  const deps = makeDeps({
+    // An empty day — exactly the case where a habit app would reach for guilt.
+    mailer: async (subject, body, html) => {
+      sent.push(`${subject}\n${body}\n${html ?? ''}`)
+    },
+  })
+
+  await composeDayEmail('morning', deps)
+  await composeDayEmail('evening', deps)
+
+  const all = sent.join('\n').toLowerCase()
+  for (const scorecard of ['streak', 'missed', 'back on track', "don't break", 'behind', 'catch up']) {
+    assert.ok(!all.includes(scorecard), `the nudge must never say "${scorecard}"`)
+  }
 })
