@@ -100,8 +100,8 @@ joshua421 stores — by your explicit choice — because grounding requires memo
 
 ## Architecture
 
-- Pure `core/` engine behind ports: **Mailer, Diary, Log, Preferences**, and the
-  **Journal** store (calendar-as-database).
+- Pure `core/` engine behind ports: **Mailer, Diary, Log, Preferences** (the
+  `Grounding` port in code), and the **Journal** store (calendar-as-database).
 - Two entrypoints: `mcp.ts` (interactive — your LLM calls the tools) and
   `worker.ts` (scheduled — the emails).
 - Adapters: **Google Workspace** (calendar read/write, Gmail send-only), a
@@ -213,16 +213,23 @@ refactor-later. That work lives with the paid/hosted notes, not here.
 ## Status — built vs. planned
 
 **Built today:**
-- core engine (`Note` / `Reflection` / `Log`), Google + Claude + SQLite adapters,
-  `env.ts`
+- core engine (`Reflection` / `Log`), Google + SQLite adapters, `env.ts`
+- **Provider-agnostic** — no LLM call of its own; the reflecting happens in the
+  user's own assistant (the MCP host), which reads the **companion persona**
+  (`core/persona.ts`, shipped as the server's `instructions`, with a one-breath
+  `FIXED_CENTRE` reasserted in the tool descriptions) and calls the tools
 - MCP: `read_day`, `apply_day_notes` (additive annotate + day summary; refuses to
   annotate a *shared* event in place — a shared note would sync to every attendee),
   `get_grounding` / `set_grounding`
-- worker: two daily emails grounded in preferences, with Claude/ChatGPT links;
-  launchd agents (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
+- worker: two daily nudge-emails (day list + companion-frame starter; a
+  local-Claude-Desktop `claude://` deep link so the MCP is present to write the
+  diary, plus a ChatGPT reflect-only link and an HTML twin). The questions now
+  arise in the *conversation*, not the email. Event times render in the calendar's
+  own wall-clock, never a bare UTC instant. launchd agents
+  (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
 - **Preferences** — grounding broadened to a freeform doc (goals, tone & language,
-  rhythm, church day/time, quiet-time slot); morning/evening prompts honour tone
-  and the day's shape; the day-of-week signal flows into the email context
+  rhythm, church day/time, quiet-time slot); the live persona reads it
+  (`get_grounding`) and calibrates tone and directness in the conversation
 - **Journal** — the calendar-as-database store seam (`core/journal.ts` port +
   `journal-google.ts` Google adapter: typed, tagged, queryable; verified live)
 
