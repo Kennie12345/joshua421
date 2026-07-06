@@ -230,6 +230,15 @@ refactor-later. That work lives with the paid/hosted notes, not here.
   keeps in their diary. HTML twin included. Event times render in the
   calendar's own wall-clock, never a bare UTC instant. launchd agents
   (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
+- **Cadence that breathes** (`core/cadence.ts`) — the worker no longer nudges on a
+  fixed clock. It parses a rhythm from grounding (a `Rhythm:` line for days/kinds, a
+  `Church:` line) and reads the Log's *silence* — days since the last reflection,
+  **never** email-open tracking — to decide, per send, whether and how gently to
+  speak: a short gap gets a gentle welcome-back; a long silence falls back to a
+  weekly touch on the church/anchor day; an already-reflected day is *softened, not
+  skipped*; the church day is never suppressed; a fresh user is met normally, not as
+  silence. Grace, not guilt — asserted by test. (launchd still owns the *time* of
+  day; cadence owns the days, kinds, and tone.)
 - **Preferences** — grounding broadened to a freeform doc (goals, tone & language,
   rhythm, church day/time, quiet-time slot); the live persona reads it
   (`get_grounding`) and calibrates tone and directness in the conversation
@@ -261,15 +270,16 @@ refactor-later. That work lives with the paid/hosted notes, not here.
    (honour `JOSHUA421_CALENDAR_ID`, default a dedicated calendar); guard `delete()`
    to `joshua421=true` (today it's unguarded on default-primary — a prompt-injection
    → real-meeting-deletion risk). Small, high-trust, mostly independent of the seam.
-3. **Cadence that breathes** — drive the schedule off the `regularity` preference
-   (not the hardcoded 07:00/20:00); read the Log in `composeDayEmail` and skip/soften
-   when today already has a reflection; grace-toned backoff after N unopened sends;
-   a one-tap "less often" link. Kills the "unopened guilt pile" failure mode.
-   Church/sabbath day is the exception that proves the rhythm: **not** silenced but
-   the week's highest-leverage reorientation — so it carries the post-church prompt
-   (see "Context signals") at full weight, and becomes the seam #7's weekly rollup
-   hangs off (the week that closed, the week opening). Which day is the user's, or
-   whether they keep one, comes from `regularity`, never a hardcoded assumption.
+3. **Cadence — remaining.** *Built* (`core/cadence.ts`): rhythm-driven days/kinds,
+   silence-based backoff (reinterpreting "N unopened sends" as "N days of silence" —
+   better, and no tracking), welcome-back / already-reflected tones, church day never
+   suppressed. *Still to do:* a true one-tap **"less often" link** (needs a web
+   endpoint — Gmail is send-only, so it waits for the hosted tier; today it routes
+   through the assistant via `set_grounding`); the **post-church prompt** content at
+   full weight on the church day (see "Context signals"); and the church day as the
+   hook the seam-#7 **weekly rollup** hangs off (the week that closed, the week
+   opening). launchd still owns the *time* of day (07:00/20:00) — cadence drives the
+   days, kinds, and tone, not the clock.
 4. **Scriptural spine + an exit off the screen** — anchor reflection to the Word
    itself, **non-denominationally**: a tradition-neutral way into Scripture (a
    through-the-Bible or topical plan, or simply the passage near where they are),
