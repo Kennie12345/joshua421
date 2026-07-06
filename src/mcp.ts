@@ -7,7 +7,7 @@ import { readDay, applyDayNotes, isoDay } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeGoogleDiary, makeGoogleMailer } from './google'
 import { makeFileGrounding } from './grounding-file'
-import { COMPANION_INSTRUCTIONS, FIXED_CENTRE } from './core/persona'
+import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION } from './core/persona'
 
 /**
  * ENTRYPOINT 1 — a thin stdio MCP server. Wires concrete adapters into the same
@@ -126,6 +126,26 @@ server.registerTool(
     await deps.grounding.set(preferences)
     return { content: [{ type: 'text', text: 'Preferences saved.' }] }
   },
+)
+
+// ── induction: the initial prompt a new user runs once, to set up their memory ──
+
+// An MCP prompt (user-invoked in the client, e.g. Claude Desktop's prompt picker)
+// that seeds the first conversation. It hands the assistant the induction flow —
+// establish the user's preferences as a conversation, then persist them via
+// set_grounding — so a first run reliably sets up the grounding instead of relying
+// on the assistant to infer that it's a first visit. Same INDUCTION text also fits
+// the welcome email's deep-link, so both on-ramps share one source.
+server.registerPrompt(
+  'begin',
+  {
+    title: 'Begin with joshua421 — set up your preferences',
+    description:
+      'Run once when you first start: a gentle conversation that establishes your ' +
+      'preferences (goals, tone, rhythm, church day, quiet time) and saves them as ' +
+      "joshua421's memory, so every reflection and nudge is grounded in them.",
+  },
+  () => ({ messages: [{ role: 'user', content: { type: 'text', text: INDUCTION } }] }),
 )
 
 async function main() {

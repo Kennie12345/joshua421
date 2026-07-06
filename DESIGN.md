@@ -281,13 +281,22 @@ refactor-later. That work lives with the paid/hosted notes, not here.
    opening). launchd still owns the *time* of day (07:00/20:00) — cadence drives the
    days, kinds, and tone, not the clock.
 4. **Scriptural spine + an exit off the screen** — anchor reflection to the Word
-   itself, **non-denominationally**: a tradition-neutral way into Scripture (a
-   through-the-Bible or topical plan, or simply the passage near where they are),
-   so the plumb line is God's word and not only the self — and the companion invites
-   them *to* the text rather than reading a curated office *to* them. Keep the
-   movement from noticing → honesty → grace → assurance in plain words, no insider
-   labels. End each reflection by handing off to prayer, stillness, and a named
-   human. Prompt work; no engine reshape.
+   itself, **non-denominationally**: joshua421 imposes no reading plan and no
+   translation, and **embeds and stores no Scripture text** — the Word enters through
+   the *conversation*, not the email. The user directs their own progress through the
+   LLM and the prompt (path A); if they keep a reading plan or rule of their own, it
+   lives in their grounding and the companion honours it, otherwise the companion lets
+   a passage meet the day (the assistant's own scriptural knowledge, no tradition
+   privileged). When it brings a passage in, it **points them to read it — a link, or
+   their own Bible — rather than reproducing the text**: that meets the Word at the
+   source (more active, more turned-outward), sidesteps translation copyright, and
+   guards against the LLM misquoting. So the plumb line is God's word and not only the
+   self, and the companion invites them *to* the text rather than reading a curated
+   office *to* them. Keep the movement from noticing → honesty → grace → assurance in
+   plain words, no insider labels. End each reflection by handing off to prayer,
+   stillness, and a named human. Prompt work; no engine reshape. *(Resolved with
+   Kenneth: scripture-in-email is not the point — the email stays a lean nudge and
+   carries no verse; the Word is pointed to, never dispensed.)*
 
 *Structural (the calendar-as-database keystone):*
 5. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the
