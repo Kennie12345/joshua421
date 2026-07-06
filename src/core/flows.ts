@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
-import { companionFrame } from './persona'
+import { companionFrame, dayQuestions } from './persona'
 
 /**
  * ISO local day (YYYY-MM-DD) for a Date. Local calendar fields so the record
@@ -93,11 +93,10 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
     ? events.map((e) => `• ${eventClock(e)} — ${e.title}`).join('\n')
     : '(nothing on your calendar today)'
 
-  // A starter they can take to ANY assistant, with deep links for the common ones.
-  // It carries the companion FRAME (so a persona-less web assistant reflects in
-  // character) plus the actual day (the particulars to reflect on). No pre-baked
-  // questions — the assistant asks them in the conversation.
-  const starter = [companionFrame(kind), '', `My day (${today}):`, dayList].join('\n')
+  // The deep-link starter is SIMPLE on purpose: the day (the context) plus a
+  // one-sentence ask. The deeper questions arise in the conversation — asked by
+  // the assistant — not pre-baked into the prompt.
+  const starter = [`My day (${today}):`, dayList, '', companionFrame(kind)].join('\n')
   // Open the user's LOCAL Claude Desktop, NOT claude.ai in a browser — the joshua421
   // MCP is a local stdio server, and the web app can't see it, so a `https://claude.ai`
   // link would let them reflect while the diary is *silently never written*. The
@@ -111,6 +110,14 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
   // user writes their own diary). Kept for cross-assistant reach.
   const chatgptLink = `https://chatgpt.com/?q=${encodeURIComponent(starter)}`
 
+  // The paste path is its own way in, not a fallback copy of the link prompt:
+  // two questions (rotated by date — see dayQuestions) the user answers in their
+  // OWN words, then pastes question + answer into any assistant to go deeper —
+  // or keeps in their diary as they are.
+  const [q1, q2] = dayQuestions(kind, today)
+  const pasteLead =
+    'Or answer these yourself — then paste question and answer into any assistant to go deeper, or keep them in your diary:'
+
   const when = kind === 'morning' ? 'this morning' : 'this evening'
   const body = [
     `Your day (${today}):`,
@@ -120,23 +127,22 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
     `  Claude:  ${claudeLink}`,
     `  ChatGPT: ${chatgptLink}`,
     '',
-    'Or paste this into any assistant you use:',
-    starter,
+    pasteLead,
+    `  • ${q1}`,
+    `  • ${q2}`,
   ].join('\n')
 
-  // HTML twin: the links ride behind anchor text so the (unavoidably long — the
-  // whole prompt is URL-encoded into ?q=) URLs stay hidden. The paste-fallback
-  // survives verbatim in a <pre>, because a client may truncate an over-long deep
-  // link. hrefs are safe unescaped: encodeURIComponent has already percent-encoded
-  // &, <, > out of the query.
+  // HTML twin: the links ride behind anchor text so the URL-encoded ?q= prompts
+  // stay hidden. hrefs are safe unescaped: encodeURIComponent has already
+  // percent-encoded &, <, > out of the query.
   const html = [
     '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5">',
     `<p><strong>Your day (${escapeHtml(today)}):</strong><br>${htmlLines(dayList)}</p>`,
     '<p>Reflect now — talk it through with your assistant:<br>',
     `<a href="${claudeLink}">Reflect with Claude&nbsp;→</a><br>`,
     `<a href="${chatgptLink}">Reflect with ChatGPT&nbsp;→</a></p>`,
-    '<p style="color:#666">Or paste this into any assistant you use:</p>',
-    `<pre style="white-space:pre-wrap;color:#666;font-size:0.9em">${escapeHtml(starter)}</pre>`,
+    `<p style="color:#666">${escapeHtml(pasteLead)}</p>`,
+    `<p style="color:#666">• ${escapeHtml(q1)}<br>• ${escapeHtml(q2)}</p>`,
     '</div>',
   ].join('\n')
 

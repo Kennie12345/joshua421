@@ -221,11 +221,14 @@ refactor-later. That work lives with the paid/hosted notes, not here.
 - MCP: `read_day`, `apply_day_notes` (additive annotate + day summary; refuses to
   annotate a *shared* event in place — a shared note would sync to every attendee),
   `get_grounding` / `set_grounding`
-- worker: two daily nudge-emails (day list + companion-frame starter; a
-  local-Claude-Desktop `claude://` deep link so the MCP is present to write the
-  diary, plus a ChatGPT reflect-only link and an HTML twin). The questions now
-  arise in the *conversation*, not the email. Event times render in the calendar's
-  own wall-clock, never a bare UTC instant. launchd agents
+- worker: two daily nudge-emails with two ways in — deep links (a
+  local-Claude-Desktop `claude://` link so the MCP is present to write the
+  diary, plus a ChatGPT reflect-only link) whose prompt is deliberately simple
+  (the day as context + a one-sentence ask; the deeper questions arise in the
+  *conversation*), and a paste path of two date-rotated questions the user
+  answers themselves, then pastes question + answer into any assistant — or
+  keeps in their diary. HTML twin included. Event times render in the
+  calendar's own wall-clock, never a bare UTC instant. launchd agents
   (`com.joshua421.morning` 07:00, `com.joshua421.evening` 20:00)
 - **Preferences** — grounding broadened to a freeform doc (goals, tone & language,
   rhythm, church day/time, quiet-time slot); the live persona reads it
@@ -261,13 +264,20 @@ refactor-later. That work lives with the paid/hosted notes, not here.
 3. **Cadence that breathes** — drive the schedule off the `regularity` preference
    (not the hardcoded 07:00/20:00); read the Log in `composeDayEmail` and skip/soften
    when today already has a reflection; grace-toned backoff after N unopened sends;
-   silent on the sabbath; a one-tap "less often" link. Kills the "unopened guilt
-   pile" failure mode.
-4. **Doctrinal spine + an exit off the screen** — feed an external plumb line
-   (lectionary / office reading + the user's rule of life) so reflection is anchored
-   to Scripture, not only the self; restore the examen movement (conviction →
-   confession → repentance → assurance); end each reflection by handing off to
-   silence and a named human. Prompt work; no engine reshape.
+   a one-tap "less often" link. Kills the "unopened guilt pile" failure mode.
+   Church/sabbath day is the exception that proves the rhythm: **not** silenced but
+   the week's highest-leverage reorientation — so it carries the post-church prompt
+   (see "Context signals") at full weight, and becomes the seam #7's weekly rollup
+   hangs off (the week that closed, the week opening). Which day is the user's, or
+   whether they keep one, comes from `regularity`, never a hardcoded assumption.
+4. **Scriptural spine + an exit off the screen** — anchor reflection to the Word
+   itself, **non-denominationally**: a tradition-neutral way into Scripture (a
+   through-the-Bible or topical plan, or simply the passage near where they are),
+   so the plumb line is God's word and not only the self — and the companion invites
+   them *to* the text rather than reading a curated office *to* them. Keep the
+   movement from noticing → honesty → grace → assurance in plain words, no insider
+   labels. End each reflection by handing off to prayer, stillness, and a named
+   human. Prompt work; no engine reshape.
 
 *Structural (the calendar-as-database keystone):*
 5. **Re-cut the seam** — `writeSummary` → Journal (marked `joshua421=true` on the

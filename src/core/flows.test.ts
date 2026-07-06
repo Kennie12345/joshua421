@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { applyDayNotes, composeDayEmail } from './flows'
+import { dayQuestions } from './persona'
 import { makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
 
 /**
@@ -96,6 +97,58 @@ test("composeDayEmail prints the calendar's wall-clock label, never a host-local
   assert.ok(sent[0].includes('23:00 — GCB mens group'), 'must print the calendar’s own wall-clock')
   assert.ok(!sent[0].includes('13:00'), 'must never leak the bare UTC instant')
   assert.ok(sent[0].includes('all day — Sabbath'), 'an all-day entry gets no fabricated midnight')
+})
+
+test('the deep-link prompt is context plus a one-sentence ask; the paste path is questions to answer', async () => {
+  const sent: string[] = []
+  const diary = makeMemoryDiary([
+    {
+      id: 'e1',
+      title: 'Team standup',
+      start: new Date('2026-07-06T23:00:00.000Z'),
+      startLocal: '2026-07-07T09:00:00+10:00',
+      shared: false,
+    },
+  ])
+  const htmlSent: string[] = []
+  const deps = makeDeps({
+    diary,
+    mailer: async (_subject, body, html) => {
+      sent.push(body)
+      htmlSent.push(html ?? '')
+    },
+    clock: () => new Date('2026-07-07T20:00:00'),
+  })
+
+  await composeDayEmail('evening', deps)
+  const body = sent[0]
+
+  // The link prompt stays lean: the day (context) + one sentence — no persona essay.
+  const q = decodeURIComponent(body.match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
+  assert.ok(q.includes('My day (2026-07-07):'), 'the prompt carries the day as context')
+  assert.ok(q.includes('one brief question at a time'), 'the prompt asks for questions, briefly')
+  assert.ok(q.length < 350, `the prompt must stay simple — got ${q.length} chars`)
+
+  // The paste path carries answerable questions, verbatim — in BOTH the plain body
+  // and the HTML twin (the surface most email clients actually render).
+  const [q1, q2] = dayQuestions('evening', '2026-07-07')
+  assert.ok(body.includes(q1) && body.includes(q2), 'both paste questions ride in the plain body')
+  assert.ok(htmlSent[0].includes(q1) && htmlSent[0].includes(q2), 'both paste questions ride in the HTML twin')
+})
+
+test('paste questions rotate with the date and never pair a question with itself', () => {
+  for (const kind of ['morning', 'evening'] as const) {
+    const pairs = new Set<string>()
+    for (let day = 1; day <= 31; day++) {
+      const date = `2026-07-${String(day).padStart(2, '0')}`
+      const [a, b] = dayQuestions(kind, date)
+      assert.notEqual(a, b, `${kind} ${date}: the two questions must differ`)
+      // Track the unordered PAIR, not just the first — an even-length bank with a
+      // len/2 offset would vary the first yet ship only two distinct pairs (a form).
+      pairs.add([a, b].sort().join(' | '))
+    }
+    assert.ok(pairs.size > 2, `${kind}: the pairing must genuinely vary, not clump — got ${pairs.size} distinct pairs`)
+  }
 })
 
 test('the nudge never wields a scorecard — grace-not-guilt is asserted, not hoped', async () => {
