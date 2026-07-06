@@ -1,7 +1,7 @@
 import './env'
 import cron from 'node-cron'
 import type { Deps } from './core/deps'
-import { composeDayEmail } from './core/flows'
+import { sendDailyNudge } from './core/flows'
 import { makeSqliteLog } from './log-sqlite'
 import { makeFileGrounding } from './grounding-file'
 import { makeGoogleDiary, makeGoogleMailer } from './google'
@@ -22,18 +22,20 @@ const deps: Deps = {
   clock: () => new Date(),
 }
 
-// The two daily jobs — each composes and sends one nudge-email.
-const JOBS: Record<string, (d: Deps) => Promise<unknown>> = {
-  morning: (d) => composeDayEmail('morning', d),
-  evening: (d) => composeDayEmail('evening', d),
+// The two daily jobs — each runs the cadence gate, which sends at most one email.
+// The gate can decide NOT to send (rest day, deep-silence backoff, kind off); that
+// is a normal outcome, logged, never an error.
+const JOBS: Record<string, (d: Deps) => Promise<{ sent: boolean; reason: string }>> = {
+  morning: (d) => sendDailyNudge('morning', d),
+  evening: (d) => sendDailyNudge('evening', d),
 }
 
 async function runJob(name: string): Promise<void> {
   const fn = JOBS[name]
   if (!fn) throw new Error(`unknown job "${name}". valid: ${Object.keys(JOBS).join(', ')}`)
   console.log(`[joshua421] job start: ${name} @ ${new Date().toISOString()}`)
-  await fn(deps)
-  console.log(`[joshua421] job done:  ${name} @ ${new Date().toISOString()}`)
+  const { sent, reason } = await fn(deps)
+  console.log(`[joshua421] job done:  ${name} @ ${new Date().toISOString()} — ${sent ? 'sent' : 'skipped'} (${reason})`)
 }
 
 const job = process.argv[2]

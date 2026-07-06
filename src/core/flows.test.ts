@@ -1,8 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyDayNotes, composeDayEmail } from './flows'
+import { applyDayNotes, composeDayEmail, sendDailyNudge } from './flows'
 import { dayQuestions } from './persona'
+import type { Reflection } from './reflection'
 import { makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
+
+const reflectedOn = (date: string): Reflection => ({ id: date, date, kind: 'after', status: 'shown-up' })
+const groundingOf = (doc: string | null) => ({ async get() { return doc }, async set() {} })
 
 /**
  * The ANCHOR test — makes the promise executable.
@@ -167,4 +171,62 @@ test('the nudge never wields a scorecard — grace-not-guilt is asserted, not ho
   for (const scorecard of ['streak', 'missed', 'back on track', "don't break", 'behind', 'catch up']) {
     assert.ok(!all.includes(scorecard), `the nudge must never say "${scorecard}"`)
   }
+})
+
+// ── cadence that breathes: the gate before composing ─────────────────────────
+
+test('sendDailyNudge honours the rhythm — a rest day sends nothing (no throw)', async () => {
+  const sent: string[] = []
+  const deps = makeDeps({
+    grounding: groundingOf('Rhythm: weekdays'),
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-04T09:00:00'), // a Saturday
+  })
+  const r = await sendDailyNudge('morning', deps)
+  assert.deepEqual([r.sent, r.reason], [false, 'off-day'])
+  assert.equal(sent.length, 0, 'a rest day sends no email')
+})
+
+test('sendDailyNudge opens with a gentle welcome-back after a gap — grace, not guilt', async () => {
+  const sent: string[] = []
+  const log = makeMemoryLog()
+  await log.add(reflectedOn('2026-07-10'))
+  const deps = makeDeps({
+    log,
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-15T09:00:00'), // 5 days of silence
+  })
+  const r = await sendDailyNudge('morning', deps)
+  assert.equal(r.sent, true)
+  assert.ok(sent[0].includes("It's been a little while"), 'the welcome-back opener rides the email')
+  assert.ok(!sent[0].toLowerCase().includes('missed'), 'the gap is met with grace, never guilt')
+})
+
+test('sendDailyNudge softens the evening when they already reflected today — never nags the faithful', async () => {
+  const sent: string[] = []
+  const log = makeMemoryLog()
+  await log.add(reflectedOn('2026-07-15'))
+  const deps = makeDeps({
+    log,
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-15T20:00:00'),
+  })
+  const r = await sendDailyNudge('evening', deps)
+  assert.deepEqual([r.sent, r.reason], [true, 'already-reflected'])
+  assert.ok(sent[0].includes('already sat with today'), 'the light opener acknowledges they showed up')
+})
+
+test('sendDailyNudge on a fresh start sends normally, with no guilt opener but the honest less-often line', async () => {
+  const sent: string[] = []
+  const deps = makeDeps({
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-15T09:00:00'),
+  })
+  const r = await sendDailyNudge('morning', deps)
+  assert.equal(r.sent, true)
+  assert.ok(
+    !sent[0].includes("It's been a little while") && !sent[0].includes('already sat'),
+    'a present new user gets no welcome-back / light line',
+  )
+  assert.ok(sent[0].includes('Fewer of these?'), 'the honest less-often line is always offered')
 })

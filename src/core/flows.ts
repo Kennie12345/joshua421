@@ -2,18 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
 import { companionFrame, dayQuestions } from './persona'
-
-/**
- * ISO local day (YYYY-MM-DD) for a Date. Local calendar fields so the record
- * date, the look-back window, and the log's streak walk all agree on the
- * user's local day.
- */
-function isoDay(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+import { isoDay } from './day'
+import { parseCadence, decideCadence, type CadenceTone } from './cadence'
 
 /**
  * Read the day's calendar entries for reflection. The conversation with Claude
@@ -74,12 +64,35 @@ function htmlLines(s: string): string {
 }
 
 /**
+ * A gentle opening line set by the cadence tone — grace, never guilt. 'return'
+ * welcomes someone back after a gap; 'light' acknowledges they've already sat with
+ * today. 'normal' opens with nothing extra. (See core/cadence.ts.)
+ */
+function toneOpener(tone: CadenceTone): string | null {
+  if (tone === 'return') return "It's been a little while — there's no clock on this. When you're ready:"
+  if (tone === 'light') return "You've already sat with today — no need to do it twice. But if something's still with you:"
+  return null
+}
+
+// An honest way to turn the volume down. The true one-tap "less often" link needs a
+// web endpoint (Gmail is send-only — we can't read a reply), so today it routes
+// through the conversation: the assistant edits the rhythm via set_grounding.
+const LESS_OFTEN = 'Fewer of these? Ask your assistant to adjust your rhythm.'
+
+/**
  * Compose and send one of the two daily nudge-emails. It lists the day and points
  * the user into a reflective conversation with their own LLM — the questions arise
  * THERE, in the conversation, not here. The email is only the nudge; the frame it
- * carries opens the assistant question-first.
+ * carries opens the assistant question-first. The `tone` (from the cadence gate)
+ * sets a gentle opener; the send itself is unconditional here — gating lives in
+ * sendDailyNudge, so this stays a pure compose-and-send for the tests.
  */
-export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): Promise<void> {
+export async function composeDayEmail(
+  kind: 'morning' | 'evening',
+  deps: Deps,
+  opts: { tone?: CadenceTone } = {},
+): Promise<void> {
+  const opener = toneOpener(opts.tone ?? 'normal')
   // Host-zone boundary: "today" here (and day()'s query window behind it) is
   // the HOST's local day — correct while the worker runs on the user's own
   // machine (launchd), where host zone == user zone. Moving the worker to a
@@ -120,6 +133,7 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
 
   const when = kind === 'morning' ? 'this morning' : 'this evening'
   const body = [
+    ...(opener ? [opener, ''] : []),
     `Your day (${today}):`,
     dayList,
     '',
@@ -130,6 +144,8 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
     pasteLead,
     `  • ${q1}`,
     `  • ${q2}`,
+    '',
+    LESS_OFTEN,
   ].join('\n')
 
   // HTML twin: the links ride behind anchor text so the URL-encoded ?q= prompts
@@ -137,16 +153,35 @@ export async function composeDayEmail(kind: 'morning' | 'evening', deps: Deps): 
   // percent-encoded &, <, > out of the query.
   const html = [
     '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5">',
+    ...(opener ? [`<p>${escapeHtml(opener)}</p>`] : []),
     `<p><strong>Your day (${escapeHtml(today)}):</strong><br>${htmlLines(dayList)}</p>`,
     '<p>Reflect now — talk it through with your assistant:<br>',
     `<a href="${claudeLink}">Reflect with Claude&nbsp;→</a><br>`,
     `<a href="${chatgptLink}">Reflect with ChatGPT&nbsp;→</a></p>`,
     `<p style="color:#666">${escapeHtml(pasteLead)}</p>`,
     `<p style="color:#666">• ${escapeHtml(q1)}<br>• ${escapeHtml(q2)}</p>`,
+    `<p style="color:#999;font-size:0.85em">${escapeHtml(LESS_OFTEN)}</p>`,
     '</div>',
   ].join('\n')
 
   await deps.mailer(`joshua421 · ${when}`, body, html)
+}
+
+/**
+ * The cadence gate before composing. Reads the rhythm (grounding) and the silence
+ * (the Log), decides WHETHER and how gently to send, then composes with that tone.
+ * A skip is a normal outcome — no send, no throw — so the worker just logs the
+ * reason. This is the seam that lets the rhythm breathe.
+ */
+export async function sendDailyNudge(
+  kind: 'morning' | 'evening',
+  deps: Deps,
+): Promise<{ sent: boolean; reason: string }> {
+  const [grounding, reflections] = await Promise.all([deps.grounding.get(), deps.log.reflections()])
+  const decision = decideCadence({ kind, now: deps.clock(), cadence: parseCadence(grounding), reflections })
+  if (!decision.send) return { sent: false, reason: decision.reason }
+  await composeDayEmail(kind, deps, { tone: decision.tone })
+  return { sent: true, reason: decision.reason }
 }
 
 export { isoDay }

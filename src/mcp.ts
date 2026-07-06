@@ -115,7 +115,11 @@ server.registerTool(
       'how often they want to reflect; their church day and time; and any daily quiet-time slot. ' +
       'Ask about these conversationally first, compose a concise plain-text document (suggested ' +
       'headings: Goals, Tone & language, Rhythm, Church, Quiet time), confirm it with them, then ' +
-      'save. Partial is fine — save what they have shared. They own it and can edit or clear it anytime.',
+      'save. So the daily-email cadence can honour it, include two machine-readable lines when ' +
+      'you know them: a "Rhythm:" line whose value is one of daily | weekdays | weekends | weekly ' +
+      '| mornings only | evenings only (these exact words), and a "Church:" line naming the day ' +
+      '(e.g. "Church: Sunday"). Partial is fine — save what they have shared. They own it and can ' +
+      'edit or clear it anytime.',
     inputSchema: { preferences: z.string() },
   },
   async ({ preferences }) => {
