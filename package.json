@@ -8,6 +8,7 @@
   "scripts": {
     "setup": "tsx src/setup/setup.ts",
     "doctor": "tsx src/setup/setup.ts --doctor",
+    "migrate": "tsx src/setup/migrate.ts",
     "mcp": "tsx src/mcp.ts",
     "worker": "tsx src/worker.ts",
     "worker:install": "tsx src/setup/worker-install.ts install",

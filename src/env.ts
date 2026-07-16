@@ -17,10 +17,11 @@ const repoRoot = join(here, '..')
 
 dotenv.config({ path: join(repoRoot, '.env'), quiet: true })
 
-// Pin the behaviour-log DB to an absolute path so it opens regardless of cwd.
+// Pin the LEGACY local stores to absolute paths so `npm run migrate` (and the
+// pre-cutover fallback checks) find them regardless of cwd. Since the
+// calendar-as-database cutover these are migration sources, not live stores.
 const db = process.env.JOSHUA421_DB ?? 'joshua421.sqlite'
 process.env.JOSHUA421_DB = isAbsolute(db) ? db : join(repoRoot, db)
 
-// Same for the grounding file (the user's goals).
 const grounding = process.env.GROUNDING_PATH ?? 'grounding.md'
 process.env.GROUNDING_PATH = isAbsolute(grounding) ? grounding : join(repoRoot, grounding)

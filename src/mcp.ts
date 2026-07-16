@@ -15,7 +15,7 @@ import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION } from './core/persona'
 // Boot diagnostic — stderr only (shows in Claude Desktop's MCP log; never on
 // stdout, where it would corrupt the protocol). No secrets, just presence.
 console.error(
-  `[joshua421] boot · cwd=${process.cwd()} · db=${process.env.JOSHUA421_DB} · ` +
+  `[joshua421] boot · cwd=${process.cwd()} · store=${process.env.JOSHUA421_CALENDAR_ID ?? 'primary'} · ` +
     `google=${process.env.GOOGLE_REFRESH_TOKEN ? 'set' : 'MISSING'}`,
 )
 

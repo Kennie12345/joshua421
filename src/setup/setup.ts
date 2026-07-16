@@ -10,8 +10,10 @@ import { mintRefreshToken } from './oauth-flow'
 import { updateEnvFile } from './env-file'
 import { sendWelcomeEmail } from '../core/flows'
 import { makeGoogleMailer, makeGoogleDiary } from '../adapters/google'
-import { makeSqliteLog } from '../adapters/log-sqlite'
+import { makeGoogleJournal } from '../adapters/journal-google'
+import { makeJournalGrounding } from '../adapters/grounding-journal'
 import { isoDay } from '../core/day'
+import { runMigration } from './migrate'
 import { repoRoot, resolveTsxCli, shQuote } from './paths'
 
 /**
@@ -192,16 +194,27 @@ async function doctor(): Promise<never> {
     }
   }
 
-  try {
-    const count = (await makeSqliteLog().reflections()).length
-    ok(`behaviour log opens (${count} reflection(s) recorded) at ${process.env.JOSHUA421_DB}`)
-  } catch (err) {
-    bad(`behaviour log failed to open — ${err instanceof Error ? err.message : err}`)
-    failures++
+  // The store is the calendar itself (the Journal): Markers, summaries, rollups
+  // and preferences all live there. Nothing is stored on this machine.
+  if (token === 'ok') {
+    try {
+      const journal = makeGoogleJournal()
+      const markers = await journal.query({ kind: 'reflection' })
+      ok(`journal store reachable (${markers.length} reflected day(s) stand as Markers)`)
+      const prefs = await makeJournalGrounding(journal).get()
+      if (prefs) ok('grounding saved (preferences set, in your calendar)')
+      else note('grounding not set yet — the first conversation will offer to set it up (this is fine)')
+      // Pre-cutover local stores that haven't crossed into the calendar yet.
+      const legacyDb = existsSync(process.env.JOSHUA421_DB ?? '')
+      const legacyGrounding = existsSync(process.env.GROUNDING_PATH ?? '')
+      if ((legacyGrounding && !prefs) || (legacyDb && markers.length === 0)) {
+        note('pre-cutover local data found — `npm run migrate` moves it into your calendar (one-time, safe to re-run)')
+      }
+    } catch (err) {
+      bad(`journal store failed — ${err instanceof Error ? err.message : err}`)
+      failures++
+    }
   }
-
-  if (existsSync(process.env.GROUNDING_PATH ?? '')) ok('grounding saved (preferences set)')
-  else note('grounding not set yet — the first conversation will offer to set it up (this is fine)')
 
   check(existsSync(wrapperPath), 'MCP launcher exists (bin/joshua421-mcp)', 'MCP launcher missing — run `npm run setup`')
 
@@ -329,9 +342,34 @@ async function setup(): Promise<void> {
     ok('Google token works')
   }
 
+  // 3.5 · the one-time cutover migration, offered where it would be discovered:
+  // pre-cutover machines hold a SQLite log and a grounding file; the calendar is
+  // the store now. Offered only while the calendar has no preferences yet (the
+  // strongest "not migrated" signal), so a migrated install stays quiet.
+  let prefsInJournal = false
+  if (status === 'ok') {
+    prefsInJournal = Boolean(await makeJournalGrounding(makeGoogleJournal()).get().catch(() => null))
+    const hasLegacy = existsSync(process.env.JOSHUA421_DB ?? '') || existsSync(process.env.GROUNDING_PATH ?? '')
+    if (!prefsInJournal && hasLegacy) {
+      if (await confirm('  Found pre-cutover local data (log / grounding). Move it into your calendar now?', false)) {
+        try {
+          await runMigration((msg) => say(msg))
+          prefsInJournal = Boolean(await makeJournalGrounding(makeGoogleJournal()).get().catch(() => null))
+        } catch (err) {
+          bad(`migration failed — ${err instanceof Error ? err.message : err}. \`npm run migrate\` retries it.`)
+        }
+      } else {
+        note('skipped — `npm run migrate` any time (one-time, safe to re-run)')
+      }
+    }
+  }
+
   // A rerun of a fully-set-up install shouldn't re-ask one-time choices; a first
-  // run (or a fresh authorisation) should. Grounding-not-yet-set == not onboarded.
-  const firstRun = mintedThisRun || !existsSync(process.env.GROUNDING_PATH ?? '')
+  // run (or a fresh authorisation) should. Grounding-not-yet-set == not onboarded
+  // (read from the calendar when we can reach it; the legacy file is the offline
+  // fallback signal).
+  const firstRun =
+    mintedThisRun || (status === 'ok' ? !prefsInJournal : !existsSync(process.env.GROUNDING_PATH ?? ''))
 
   // 4 · the address the nudges go to (autofilled from the token when possible)
   if (!process.env.GOOGLE_USER_EMAIL) {
@@ -344,9 +382,10 @@ async function setup(): Promise<void> {
   // since a set value is indistinguishable from a deliberately-kept "primary").
   const currentCal = process.env.JOSHUA421_CALENDAR_ID ?? 'primary'
   if (firstRun && currentCal === 'primary') {
-    say('\n  Day summaries land on your PRIMARY calendar by default. To keep them on a')
-    say('  dedicated "joshua421" calendar instead, create one in Google Calendar and')
-    say('  paste its ID here (docs/setup.md → "A dedicated calendar" shows how).')
+    say("\n  joshua421's entries (day summaries, Markers, rollups, your preferences) land")
+    say('  on your PRIMARY calendar by default. To keep them on a dedicated "joshua421"')
+    say('  calendar instead, create one in Google Calendar and paste its ID here')
+    say('  (docs/setup.md → "A dedicated calendar" shows how).')
     const calId = await askText('  Calendar ID (Enter to keep primary): ')
     if (calId) {
       await saveEnv({ JOSHUA421_CALENDAR_ID: calId })
@@ -378,10 +417,10 @@ async function setup(): Promise<void> {
       bad(`calendar read failed — ${err instanceof Error ? err.message : err}`)
     }
     try {
-      await makeSqliteLog().reflections()
-      ok('behaviour log opens')
+      await makeGoogleJournal().query({ kind: 'preferences' })
+      ok('journal store reachable (your calendar holds the log)')
     } catch (err) {
-      bad(`behaviour log failed — ${err instanceof Error ? err.message : err}`)
+      bad(`journal store failed — ${err instanceof Error ? err.message : err}`)
     }
   }
 
