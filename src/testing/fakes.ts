@@ -49,18 +49,24 @@ export function makeMemoryDiary(
   dayEvents: DayEvent[] = [],
 ): Diary & {
   readonly annotations: { eventId: string; note: string }[]
+  readonly sideEntries: { eventId: string; note: string }[]
   readonly strips: string[]
 } {
   const annotations: { eventId: string; note: string }[] = []
+  const sideEntries: { eventId: string; note: string }[] = []
   const strips: string[] = []
   return {
     annotations,
+    sideEntries,
     strips,
     async day() {
       return dayEvents
     },
     async annotate(eventId, note) {
       annotations.push({ eventId, note })
+    },
+    async sideEntry(eventId, note) {
+      sideEntries.push({ eventId, note })
     },
     async stripAnnotation(eventId) {
       strips.push(eventId)

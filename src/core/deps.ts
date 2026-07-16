@@ -53,6 +53,16 @@ export interface Diary {
    * no-op if the event carries nothing of ours.
    */
   stripAnnotation(eventId: string): Promise<void>
+  /**
+   * The second write mode (design: two write modes, chosen per entry): a PRIVATE
+   * side-entry in the same time slot as the source event — a sibling the
+   * reflection lives in, the event itself untouched. The only mode for shared or
+   * public events (annotate refuses those, so a note can never sync to another
+   * attendee), and available whenever the user prefers it. Created
+   * joshua421-tagged, so the Journal's guarded delete can reverse it; re-writing
+   * the same event's side entry appends — never a second sibling.
+   */
+  sideEntry(eventId: string, note: string): Promise<void>
 }
 
 /** Injectable clock, so the flows are testable. */

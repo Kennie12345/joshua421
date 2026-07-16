@@ -8,6 +8,7 @@ import {
   saveRollup,
   sendDailyNudge,
   sendWelcomeEmail,
+  undoWrite,
 } from './flows'
 import { dayQuestions, INDUCTION } from './persona'
 import type { Reflection } from './reflection'
@@ -73,6 +74,47 @@ test('applyDayNotes with no notes and no summary records exactly one reflection,
   assert.equal(log.rows.length, 1)
   assert.equal(diary.annotations.length, 0)
   assert.equal((await deps.journal.query()).length, 0)
+})
+
+test('applyDayNotes routes each note by its placement — in the event, or a private side-entry beside it', async () => {
+  const diary = makeMemoryDiary()
+  const log = makeMemoryLog()
+  const deps = makeDeps({ diary, log })
+
+  await applyDayNotes(
+    {
+      date: '2026-07-16',
+      notes: [
+        { eventId: 'private-event', note: 'in the event itself' },
+        { eventId: 'shared-event', note: 'kept beside it', placement: 'side' },
+      ],
+    },
+    deps,
+  )
+
+  assert.deepEqual(diary.annotations, [{ eventId: 'private-event', note: 'in the event itself' }])
+  assert.deepEqual(diary.sideEntries, [{ eventId: 'shared-event', note: 'kept beside it' }])
+  // Same promise on both paths: content reaches only the user's calendar.
+  assert.ok(!JSON.stringify(log.rows).includes('kept beside it'), 'side-entry text must never reach the log')
+})
+
+test('undoWrite: strip_note reverses an annotation; delete_entry removes only a joshua421-created entry', async () => {
+  const diary = makeMemoryDiary()
+  const journal = makeMemoryJournal()
+  const deps = makeDeps({ diary, journal })
+
+  await deps.diary.annotate('e1', 'a note to reverse')
+  await undoWrite({ eventId: 'e1', action: 'strip_note' }, deps)
+  assert.deepEqual(diary.strips, ['e1'])
+  assert.equal(diary.annotations.length, 0, 'the annotation is gone; the event survives')
+
+  const kept = await journal.upsert('day-summary', '2026-07-16', {
+    date: '2026-07-16',
+    title: 'Reflection · 2026-07-16',
+    body: 'to be deleted at their request',
+  })
+  await undoWrite({ eventId: kept.id, action: 'delete_entry' }, deps)
+  assert.equal((await journal.query()).length, 0, 'the created entry is deleted on request')
 })
 
 test('applyDayNotes upserts one day summary when launchd fires twice', async () => {

@@ -31,15 +31,24 @@ async function yesterdaySummary(date: string, deps: Deps): Promise<string | null
 }
 
 /**
- * Apply the user-APPROVED notes (additive, into each event) plus an optional
- * day summary, and record that they reflected. The summary belongs to the Journal;
- * the Log keeps behaviour only.
+ * Apply the user-APPROVED notes plus an optional day summary, and record that
+ * they reflected. Each note chooses its write mode (`placement`): into the
+ * event's own notes (additive, the default), or a private side-entry in the same
+ * time slot — the only mode for shared/public events, whose descriptions sync to
+ * other people. The summary belongs to the Journal; the Log keeps behaviour only.
  */
 export async function applyDayNotes(
-  input: { date: string; notes: { eventId: string; note: string }[]; summary?: string },
+  input: {
+    date: string
+    notes: { eventId: string; note: string; placement?: 'note' | 'side' }[]
+    summary?: string
+  },
   deps: Deps,
 ): Promise<Reflection> {
-  for (const n of input.notes) await deps.diary.annotate(n.eventId, n.note)
+  for (const n of input.notes) {
+    if (n.placement === 'side') await deps.diary.sideEntry(n.eventId, n.note)
+    else await deps.diary.annotate(n.eventId, n.note)
+  }
   if (input.summary) {
     await deps.journal.upsert('day-summary', input.date, {
       date: input.date,
@@ -55,6 +64,23 @@ export async function applyDayNotes(
   }
   await deps.log.add(reflection)
   return reflection
+}
+
+/**
+ * Reverse a joshua421 write, at the user's request — the delete of the diary's
+ * CRUD, kept as narrow as the promise demands. 'strip_note' removes only our
+ * fenced block from THEIR event (their words survive, even ones added after our
+ * block; ambiguity is a no-op). 'delete_entry' removes an entry joshua421
+ * CREATED — a side entry, a day summary, a rollup — via the Journal's guarded
+ * delete, which refuses anything untagged: their real events are structurally
+ * out of reach.
+ */
+export async function undoWrite(
+  input: { eventId: string; action: 'strip_note' | 'delete_entry' },
+  deps: Deps,
+): Promise<void> {
+  if (input.action === 'strip_note') await deps.diary.stripAnnotation(input.eventId)
+  else await deps.journal.delete(input.eventId)
 }
 
 /**

@@ -2,7 +2,7 @@ import './env'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { readDay, applyDayNotes, lookBack, saveRollup, isoDay } from './core/flows'
+import { readDay, applyDayNotes, lookBack, saveRollup, undoWrite, isoDay } from './core/flows'
 import { makeProdDeps } from './prod-deps'
 import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION } from './core/persona'
 
@@ -102,11 +102,21 @@ server.registerTool(
       "never rewriting their words), plus an optional day summary as an all-day entry. The " +
       'content may be a gentle note drafted together, the user\'s own words saved verbatim, or — ' +
       'if they want to reflect in their diary themselves — the chosen reflection\'s questions, ' +
-      'placed in the notes for them to answer. ' +
+      'placed in the notes for them to answer. Each note chooses its placement: "note" (default) ' +
+      'writes into the event itself; "side" keeps a PRIVATE side-entry in the same time slot, ' +
+      'leaving the event untouched — required for a shared or public event (read_day marks these ' +
+      '`shared`; a note written into one would sync to every attendee), and available whenever ' +
+      'the user prefers it. ' +
       FIXED_CENTRE,
     inputSchema: {
       date: z.string(),
-      notes: z.array(z.object({ eventId: z.string(), note: z.string() })),
+      notes: z.array(
+        z.object({
+          eventId: z.string(),
+          note: z.string(),
+          placement: z.enum(['note', 'side']).optional(),
+        }),
+      ),
       summary: z.string().optional(),
     },
   },
@@ -116,6 +126,38 @@ server.registerTool(
     if (summary) parts.push('Added a day summary.')
     parts.push('Reflection recorded.')
     return { content: [{ type: 'text', text: parts.join(' ') }] }
+  },
+)
+
+server.registerTool(
+  'undo_write',
+  {
+    description:
+      "Reverse a joshua421 write, at the user's request — every write stays reversible. Action " +
+      '"strip_note" removes ONLY joshua421\'s fenced block from their event: their own words ' +
+      'survive, even ones they added after it, and any ambiguity is a safe no-op. Action ' +
+      '"delete_entry" deletes an entry joshua421 CREATED — a side entry, a day summary, a rollup — ' +
+      'and refuses anything else: their real events are structurally out of reach. Reverse exactly ' +
+      'what they ask, nothing more. ' +
+      FIXED_CENTRE,
+    inputSchema: {
+      eventId: z.string(),
+      action: z.enum(['strip_note', 'delete_entry']),
+    },
+  },
+  async ({ eventId, action }) => {
+    await undoWrite({ eventId, action }, deps)
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            action === 'strip_note'
+              ? 'Removed joshua421’s note from the event; the user’s own words are untouched.'
+              : 'Deleted the joshua421-created entry.',
+        },
+      ],
+    }
   },
 )
 

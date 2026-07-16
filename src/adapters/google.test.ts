@@ -19,12 +19,15 @@ function fakeCalendar(
     description?: string
     visibility?: string
     attendees?: unknown[]
+    summary?: string
+    start?: calendar_v3.Schema$Event['start']
+    end?: calendar_v3.Schema$Event['end']
     listItems?: calendar_v3.Schema$Event[]
   } = {},
 ) {
   const state = { description: init.description, visibility: init.visibility, attendees: init.attendees }
   const calls = {
-    listed: [] as { calendarId?: string }[],
+    listed: [] as { calendarId?: string; privateExtendedProperty?: string[] }[],
     inserted: [] as { calendarId?: string; requestBody?: calendar_v3.Schema$Event }[],
     patched: [] as { calendarId?: string; eventId?: string; requestBody?: calendar_v3.Schema$Event }[],
     deleted: [] as { calendarId?: string; eventId?: string }[],
@@ -32,9 +35,16 @@ function fakeCalendar(
   const cal = {
     events: {
       get: async () => ({
-        data: { description: state.description, visibility: state.visibility, attendees: state.attendees },
+        data: {
+          description: state.description,
+          visibility: state.visibility,
+          attendees: state.attendees,
+          summary: init.summary,
+          start: init.start,
+          end: init.end,
+        },
       }),
-      list: async (p: { calendarId?: string }) => {
+      list: async (p: { calendarId?: string; privateExtendedProperty?: string[] }) => {
         calls.listed.push(p)
         return { data: { items: init.listItems ?? [] } }
       },
@@ -173,6 +183,68 @@ test('annotate refuses an event with attendees (would sync to them)', async () =
   const { cal } = fakeCalendar({ description: 'x', attendees: [{ email: 'a@b.c' }] })
   const diary = makeGoogleDiary({ calendar: cal })
   await assert.rejects(() => diary.annotate('e1', 'private note'))
+})
+
+// ── the side entry: the write mode for what must not touch the event ─────────
+
+test('sideEntry keeps a private, transparent, tagged sibling in the STORE calendar — same slot, source untouched', async () => {
+  const { cal, calls } = fakeCalendar({
+    summary: 'Team offsite',
+    attendees: [{ email: 'boss@work.example' }], // shared — exactly why the side entry exists
+    start: { dateTime: '2026-07-16T14:00:00+10:00', timeZone: 'Australia/Sydney' },
+    end: { dateTime: '2026-07-16T15:00:00+10:00', timeZone: 'Australia/Sydney' },
+  })
+  const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ', storeCalendarId: 'STORE' })
+
+  await diary.sideEntry('e1', 'You walked in braced for a fight and it never came.')
+
+  assert.equal(calls.patched.length, 0, 'the shared source event is never written to')
+  assert.equal(calls.inserted.length, 1)
+  const { calendarId, requestBody } = calls.inserted[0]
+  assert.equal(calendarId, 'STORE', 'created artifacts live on the store calendar')
+  assert.equal(requestBody?.summary, 'Reflection · Team offsite')
+  assert.deepEqual(requestBody?.start, { dateTime: '2026-07-16T14:00:00+10:00', timeZone: 'Australia/Sydney' })
+  assert.equal(requestBody?.visibility, 'private', 'the reflection must never leak')
+  assert.equal(requestBody?.transparency, 'transparent', 'a reflection must not block their time')
+  const tags = requestBody?.extendedProperties?.private ?? {}
+  assert.equal(tags.joshua421, 'true', 'tagged ours — so the guarded delete can reverse it')
+  assert.equal(tags.joshua421SideOf, 'e1', 'tied to its source event')
+  assert.equal(tags.joshua421Date, '2026-07-16')
+})
+
+test('a second sideEntry for the same event appends to the sibling — never a second sibling', async () => {
+  const existing: calendar_v3.Schema$Event = {
+    id: 'side-1',
+    description: 'first reflection',
+    extendedProperties: { private: { joshua421: 'true', joshua421SideOf: 'e1' } },
+  }
+  const { cal, calls } = fakeCalendar({
+    summary: 'Team offsite',
+    start: { dateTime: '2026-07-16T14:00:00+10:00' },
+    listItems: [existing],
+  })
+  const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ', storeCalendarId: 'STORE' })
+
+  await diary.sideEntry('e1', 'second reflection')
+
+  assert.equal(calls.inserted.length, 0)
+  assert.deepEqual(
+    [calls.patched[0].calendarId, calls.patched[0].eventId],
+    ['STORE', 'side-1'],
+  )
+  assert.equal(calls.patched[0].requestBody?.description, 'first reflection\n\nsecond reflection')
+})
+
+test('an all-day source keeps an all-day sibling — no fabricated midnight', async () => {
+  const { cal, calls } = fakeCalendar({ summary: 'Sabbath', start: { date: '2026-07-19' } })
+  const diary = makeGoogleDiary({ calendar: cal, storeCalendarId: 'STORE' })
+
+  await diary.sideEntry('e2', 'rest, actually rested')
+
+  const body = calls.inserted[0].requestBody
+  assert.deepEqual(body?.start, { date: '2026-07-19' })
+  assert.deepEqual(body?.end, { date: '2026-07-19' }, 'a missing end falls back to the start')
+  assert.equal(body?.extendedProperties?.private?.joshua421Date, '2026-07-19')
 })
 
 test('annotate refuses a public event (world-readable description)', async () => {

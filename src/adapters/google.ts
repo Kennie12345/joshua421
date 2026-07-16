@@ -81,6 +81,9 @@ export function makeGoogleDiary(
     calendar?: calendar_v3.Calendar
     /** The user's real event calendar — read + annotated in place. */
     readCalendarId?: string
+    /** Where joshua421's CREATED artifacts live (side entries, like the Journal's
+     *  summaries) — defaults to the store calendar. */
+    storeCalendarId?: string
   } = {},
 ): Diary {
   const BLOCK_BEGIN = '— joshua421 —'
@@ -89,6 +92,7 @@ export function makeGoogleDiary(
   const BLOCK_END = '—·—'
   const cal = () => opts.calendar ?? getClients().calendar
   const readCalendarId = opts.readCalendarId ?? process.env.JOSHUA421_READ_CALENDAR_ID ?? 'primary'
+  const storeCalendarId = opts.storeCalendarId ?? process.env.JOSHUA421_CALENDAR_ID ?? 'primary'
 
   return {
     async day(date: string): Promise<DayEvent[]> {
@@ -175,6 +179,54 @@ export function makeGoogleDiary(
         calendarId: readCalendarId,
         eventId,
         requestBody: { description: appended },
+      })
+    },
+
+    async sideEntry(eventId: string, note: string): Promise<void> {
+      const calendar = cal()
+      // The source event gives the time slot and the name — it is READ only;
+      // nothing is ever written into it on this path (that is the point).
+      const src = (await calendar.events.get({ calendarId: readCalendarId, eventId })).data
+      // One sibling per source event: a second reflection on the same event
+      // appends to the existing side entry (the whole entry is ours — no fence
+      // needed) rather than piling siblings beside it.
+      const existing = (
+        await calendar.events.list({
+          calendarId: storeCalendarId,
+          privateExtendedProperty: ['joshua421=true', `joshua421SideOf=${eventId}`],
+        })
+      ).data.items?.find((item) => item.id)
+      if (existing) {
+        const current = existing.description ?? ''
+        await calendar.events.patch({
+          calendarId: storeCalendarId,
+          eventId: existing.id!,
+          requestBody: { description: `${current}${current ? '\n\n' : ''}${note}` },
+        })
+        return
+      }
+      // Same slot, verbatim — a timed source stays timed, an all-day source
+      // stays all-day. Private and transparent: the reflection must never leak
+      // (the source may be shared — that's WHY we're here) nor block their time.
+      const day = src.start?.date ?? src.start?.dateTime?.slice(0, 10) ?? ''
+      await calendar.events.insert({
+        calendarId: storeCalendarId,
+        requestBody: {
+          summary: `Reflection · ${src.summary ?? '(untitled)'}`,
+          description: note,
+          start: src.start ?? undefined,
+          end: src.end ?? src.start ?? undefined,
+          visibility: 'private',
+          transparency: 'transparent',
+          extendedProperties: {
+            private: {
+              joshua421: 'true',
+              joshua421Kind: 'side-note',
+              joshua421SideOf: eventId,
+              joshua421Date: day,
+            },
+          },
+        },
       })
     },
 
