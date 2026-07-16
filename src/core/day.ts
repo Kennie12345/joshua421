@@ -15,7 +15,14 @@ export function isoDay(d: Date): string {
 /** Whole days from one ISO day to another (`to - from`); positive if `to` is
  *  later. Parsed as UTC midnights so it never drifts with the host zone or DST. */
 export function daysBetween(fromISO: string, toISO: string): number {
-  const at = (iso: string) =>
-    Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))
-  return Math.round((at(toISO) - at(fromISO)) / 86_400_000)
+  return Math.round((atUtcMidnight(toISO) - atUtcMidnight(fromISO)) / 86_400_000)
 }
+
+/** The ISO day `delta` whole days from `iso` (negative for earlier). UTC-midnight
+ *  arithmetic, so a DST-shortened local day can never skip or repeat a date. */
+export function shiftDay(iso: string, delta: number): string {
+  return new Date(atUtcMidnight(iso) + delta * 86_400_000).toISOString().slice(0, 10)
+}
+
+const atUtcMidnight = (iso: string): number =>
+  Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))

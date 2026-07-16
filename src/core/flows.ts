@@ -2,15 +2,31 @@ import { randomUUID } from 'node:crypto'
 import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
 import { companionFrame, dayQuestions, INDUCTION } from './persona'
-import { isoDay } from './day'
+import { isoDay, shiftDay } from './day'
 import { parseCadence, decideCadence, type CadenceTone } from './cadence'
 
 /**
- * Read the day's calendar entries for reflection. The conversation with Claude
+ * Read the day's calendar entries for reflection, plus yesterday's kept summary
+ * (their own words — the thread the day continues). The conversation with Claude
  * does the reflecting — this just hands it the canvas.
  */
-export async function readDay(date: string, deps: Deps): Promise<DayEvent[]> {
-  return deps.diary.day(date)
+export async function readDay(
+  date: string,
+  deps: Deps,
+): Promise<{ events: DayEvent[]; yesterdaySummary?: string }> {
+  const [events, yesterday] = await Promise.all([
+    deps.diary.day(date),
+    yesterdaySummary(date, deps),
+  ])
+  return { events, ...(yesterday ? { yesterdaySummary: yesterday } : {}) }
+}
+
+/** The day-summary the user kept for the day before `date`, or null. Read live
+ *  from the Journal (their calendar) — never from a store of ours. */
+async function yesterdaySummary(date: string, deps: Deps): Promise<string | null> {
+  const day = shiftDay(date, -1)
+  const [entry] = await deps.journal.query({ kind: 'day-summary', period: day, since: day, until: day })
+  return entry?.body || null
 }
 
 /**
@@ -86,19 +102,35 @@ function toneOpener(tone: CadenceTone): string | null {
 const LESS_OFTEN = 'Fewer of these? Ask your assistant to adjust your rhythm.'
 
 /**
+ * A gentle cut for reading a kept summary back: whole words, an honest ellipsis.
+ * Their words are read back, never rewritten — so a long one is trimmed, not
+ * paraphrased.
+ */
+function excerpt(text: string, max = 400): string {
+  const t = text.trim()
+  if (t.length <= max) return t
+  const cut = t.slice(0, max)
+  const atWord = cut.lastIndexOf(' ')
+  return `${(atWord > 0 ? cut.slice(0, atWord) : cut).replace(/[\s,;—–-]+$/, '')} …`
+}
+
+/**
  * Compose and send one of the two daily nudge-emails. It lists the day and points
  * the user into a reflective conversation with their own LLM — the questions arise
  * THERE, in the conversation, not here. The email is only the nudge; the frame it
  * carries opens the assistant question-first. The `tone` (from the cadence gate)
- * sets a gentle opener; the send itself is unconditional here — gating lives in
- * sendDailyNudge, so this stays a pure compose-and-send for the tests.
+ * sets a gentle opener; `church` marks the church evening, where the look-back
+ * widens to the week (the post-church frame and questions, at full weight). The
+ * send itself is unconditional here — gating lives in sendDailyNudge, so this
+ * stays a pure compose-and-send for the tests.
  */
 export async function composeDayEmail(
   kind: 'morning' | 'evening',
   deps: Deps,
-  opts: { tone?: CadenceTone } = {},
+  opts: { tone?: CadenceTone; church?: boolean } = {},
 ): Promise<void> {
   const tone = opts.tone ?? 'normal'
+  const church = (opts.church ?? false) && kind === 'evening'
   const opener = toneOpener(tone)
   // Host-zone boundary: "today" here (and day()'s query window behind it) is
   // the HOST's local day — correct while the worker runs on the user's own
@@ -106,7 +138,13 @@ export async function composeDayEmail(
   // box in another zone requires user-zone day selection first; the per-event
   // wall-clock labels below are already host-independent.
   const today = isoDay(deps.clock())
-  const events = await deps.diary.day(today)
+  // The morning reads yesterday's kept summary back — their OWN words, live from
+  // the Journal — so the memorial is felt daily, not only looked up. The evening
+  // doesn't: its subject is the day just lived.
+  const [events, yesterday] = await Promise.all([
+    deps.diary.day(today),
+    kind === 'morning' ? yesterdaySummary(today, deps) : Promise.resolve(null),
+  ])
 
   // Deterministic day list — the assistant never invents events.
   const dayList = events.length
@@ -115,8 +153,10 @@ export async function composeDayEmail(
 
   // The deep-link starter is SIMPLE on purpose: the day (the context) plus a
   // one-sentence ask. The deeper questions arise in the conversation — asked by
-  // the assistant — not pre-baked into the prompt.
-  const starter = [`My day (${today}):`, dayList, '', companionFrame(kind)].join('\n')
+  // the assistant — not pre-baked into the prompt. (Yesterday's summary stays out
+  // of the URL — the assistant reads it live via read_day; a reflection in a URL
+  // leaks to browser history and logs.)
+  const starter = [`My day (${today}):`, dayList, '', companionFrame(kind, { church })].join('\n')
   // Open the user's LOCAL Claude Desktop, NOT claude.ai in a browser — the joshua421
   // MCP is a local stdio server, and the web app can't see it, so a `https://claude.ai`
   // link would let them reflect while the diary is *silently never written*. The
@@ -135,14 +175,22 @@ export async function composeDayEmail(
   // OWN words, then pastes question + answer into any assistant to go deeper —
   // or keeps in their diary as they are. The TONE must ride along: these questions
   // sit three lines under the opener, so a welcome-back that then asks what went
-  // wrong is an accusation regardless of how the opener reads.
-  const [q1, q2] = dayQuestions(kind, today, tone)
+  // wrong is an accusation regardless of how the opener reads. On the church
+  // evening the bank is the post-church one — the week's anchor at full weight.
+  const [q1, q2] = dayQuestions(kind, today, tone, church)
   const pasteLead =
     'Or answer these yourself — then paste question and answer into any assistant to go deeper, or keep them in your diary:'
 
-  const when = kind === 'morning' ? 'this morning' : 'this evening'
+  // Yesterday's summary, read back in THEIR words — the memorial, felt daily.
+  // Never a scorecard: it appears when there is something to read back, and is
+  // simply absent when there isn't.
+  const yesterdayLead = 'Yesterday you kept this — your words:'
+  const yesterdayBlock = yesterday ? [yesterdayLead, `  ${excerpt(yesterday)}`, ''] : []
+
+  const when = church ? 'after church' : kind === 'morning' ? 'this morning' : 'this evening'
   const body = [
     ...(opener ? [opener, ''] : []),
+    ...yesterdayBlock,
     `Your day (${today}):`,
     dayList,
     '',
@@ -163,6 +211,12 @@ export async function composeDayEmail(
   const html = [
     '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5">',
     ...(opener ? [`<p>${escapeHtml(opener)}</p>`] : []),
+    ...(yesterday
+      ? [
+          `<p style="color:#666">${escapeHtml(yesterdayLead)}<br>` +
+            `<em>${htmlLines(excerpt(yesterday))}</em></p>`,
+        ]
+      : []),
     `<p><strong>Your day (${escapeHtml(today)}):</strong><br>${htmlLines(dayList)}</p>`,
     '<p>Reflect now — talk it through with your assistant:<br>',
     `<a href="${claudeLink}">Reflect with Claude&nbsp;→</a><br>`,
@@ -245,9 +299,15 @@ export async function sendDailyNudge(
   deps: Deps,
 ): Promise<{ sent: boolean; reason: string }> {
   const [grounding, reflections] = await Promise.all([deps.grounding.get(), deps.log.reflections()])
-  const decision = decideCadence({ kind, now: deps.clock(), cadence: parseCadence(grounding), reflections })
+  const now = deps.clock()
+  const cadence = parseCadence(grounding)
+  const decision = decideCadence({ kind, now, cadence, reflections })
   if (!decision.send) return { sent: false, reason: decision.reason }
-  await composeDayEmail(kind, deps, { tone: decision.tone })
+  // The church evening widens the look-back to the week. Computed here (not from
+  // the decision's reason) because an already-reflected church evening still
+  // deserves the post-church frame — its reason is 'already-reflected'.
+  const church = kind === 'evening' && cadence.churchDay === now.getDay()
+  await composeDayEmail(kind, deps, { tone: decision.tone, church })
   return { sent: true, reason: decision.reason }
 }
 

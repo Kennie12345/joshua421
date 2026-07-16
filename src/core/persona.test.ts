@@ -114,6 +114,35 @@ test('a welcome-back never opens with self-examination', () => {
   }
 })
 
+test('the church bank turns the evening toward the week — and always welcomes', () => {
+  // Church is the week's anchor: its questions must reach beyond the single day,
+  // and a return that lands on the church day is doubly welcome — the whole bank
+  // must survive the 'return' filter, so the rotation stays distinct even then.
+  const asked = new Set<string>()
+  for (let d = 1; d <= 31; d++) {
+    const date = `2026-07-${String(d).padStart(2, '0')}`
+    for (const tone of ['normal', 'return'] as const) {
+      const [q1, q2] = dayQuestions('evening', date, tone, true)
+      assert.notEqual(q1, q2, `${date} (${tone}): the church pair must stay distinct`)
+      asked.add(q1)
+      asked.add(q2)
+      for (const q of [q1, q2]) {
+        assert.ok(!/went wrong/i.test(q), `church evening must not open with self-examination: "${q}"`)
+      }
+    }
+  }
+  assert.ok([...asked].some((q) => /church/i.test(q)), 'the bank asks about church itself')
+  assert.ok([...asked].some((q) => /week/i.test(q)), 'the bank turns toward the week')
+})
+
+test('church touches only the evening — a church-day morning keeps the morning bank', () => {
+  const [q1, q2] = dayQuestions('morning', '2026-07-19', 'normal', true)
+  const morningBank = new Set(
+    Array.from({ length: 31 }, (_, i) => dayQuestions('morning', `2026-07-${String(i + 1).padStart(2, '0')}`)).flat(),
+  )
+  assert.ok(morningBank.has(q1) && morningBank.has(q2), 'the morning of a church day still offers the day to God')
+})
+
 test('an ordinary day still gets the full bank, self-examination included', () => {
   // The return filter must narrow the welcome-back WITHOUT quietly retiring a good
   // question from ordinary evenings — "honest before liked" needs it.

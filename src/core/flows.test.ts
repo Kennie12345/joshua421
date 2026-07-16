@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyDayNotes, composeDayEmail, sendDailyNudge, sendWelcomeEmail } from './flows'
+import { applyDayNotes, composeDayEmail, readDay, sendDailyNudge, sendWelcomeEmail } from './flows'
 import { dayQuestions, INDUCTION } from './persona'
 import type { Reflection } from './reflection'
 import { makeMemoryJournal, makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
@@ -264,6 +264,112 @@ test('sendDailyNudge softens the evening when they already reflected today — n
   const r = await sendDailyNudge('evening', deps)
   assert.deepEqual([r.sent, r.reason], [true, 'already-reflected'])
   assert.ok(sent[0].includes('already sat with today'), 'the light opener acknowledges they showed up')
+})
+
+// ── the church evening: the week's anchor, at full weight ────────────────────
+
+test('the church evening carries the post-church frame and questions — the week widened, not another day', async () => {
+  const sent: { subject: string; body: string }[] = []
+  const deps = makeDeps({
+    grounding: groundingOf('Church: Sunday'),
+    mailer: async (subject, body) => void sent.push({ subject, body }),
+    clock: () => new Date('2026-07-19T20:00:00'), // a Sunday evening
+  })
+
+  const r = await sendDailyNudge('evening', deps)
+  assert.deepEqual([r.sent, r.reason], [true, 'church-day'])
+  const { subject, body } = sent[0]
+
+  assert.ok(subject.includes('after church'), 'the church evening is named for what it is')
+  const starter = decodeURIComponent(body.match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
+  assert.ok(/what I took from church/i.test(starter), 'the deep-link frame carries the post-church ask')
+  assert.ok(/week ahead/i.test(starter), 'the frame turns toward the week ahead')
+  const [q1, q2] = dayQuestions('evening', '2026-07-19', 'normal', true)
+  assert.ok(body.includes(q1) && body.includes(q2), 'the paste questions come from the church bank')
+})
+
+test('an already-reflected church evening keeps the post-church frame — softened, never demoted to an ordinary day', async () => {
+  const sent: string[] = []
+  const log = makeMemoryLog()
+  await log.add(reflectedOn('2026-07-19'))
+  const deps = makeDeps({
+    log,
+    grounding: groundingOf('Church: Sunday'),
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-19T20:00:00'),
+  })
+
+  const r = await sendDailyNudge('evening', deps)
+  assert.deepEqual([r.sent, r.reason], [true, 'already-reflected'])
+  assert.ok(sent[0].includes('already sat with today'), 'the light opener still rides')
+  const starter = decodeURIComponent(sent[0].match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
+  assert.ok(/took from church/i.test(starter), 'the post-church frame survives the soften')
+})
+
+test('an ordinary evening never wears the church frame', async () => {
+  const sent: { subject: string; body: string }[] = []
+  const deps = makeDeps({
+    grounding: groundingOf('Church: Sunday'),
+    mailer: async (subject, body) => void sent.push({ subject, body }),
+    clock: () => new Date('2026-07-15T20:00:00'), // a Wednesday
+  })
+  await sendDailyNudge('evening', deps)
+  assert.ok(!sent[0].subject.includes('church'), 'a Wednesday is not after church')
+  assert.ok(!sent[0].body.toLowerCase().includes('took from church'), 'no post-church ask on an ordinary day')
+})
+
+// ── the memorial, felt daily: the morning reads yesterday back ────────────────
+
+test("the morning email reads back yesterday's kept summary — their own words, live from the Journal", async () => {
+  const journal = makeMemoryJournal()
+  await journal.upsert('day-summary', '2026-07-14', {
+    date: '2026-07-14',
+    title: 'Reflection · 2026-07-14',
+    body: 'I handed the deadline to God and it held.',
+  })
+  const sent: { body: string; html: string }[] = []
+  const deps = makeDeps({
+    journal,
+    mailer: async (_s, body, html) => void sent.push({ body, html: html ?? '' }),
+    clock: () => new Date('2026-07-15T07:00:00'),
+  })
+
+  await composeDayEmail('morning', deps)
+  assert.ok(sent[0].body.includes('Yesterday you kept this — your words:'), 'the read-back is framed as theirs')
+  assert.ok(sent[0].body.includes('I handed the deadline to God and it held.'), 'their words ride verbatim')
+  assert.ok(sent[0].html.includes('I handed the deadline to God and it held.'), 'the read-back rides the HTML twin')
+
+  // And it never leaks into the deep-link URL — a reflection in a URL is a
+  // reflection in browser history and logs.
+  const starter = decodeURIComponent(sent[0].body.match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
+  assert.ok(!starter.includes('deadline'), 'the summary stays out of the link prompt')
+})
+
+test('a morning with nothing kept yesterday simply has no read-back — absence, never a remark', async () => {
+  const sent: string[] = []
+  const deps = makeDeps({
+    mailer: async (_s, body) => void sent.push(body),
+    clock: () => new Date('2026-07-15T07:00:00'),
+  })
+  await composeDayEmail('morning', deps)
+  assert.ok(!sent[0].includes('Yesterday you kept'), 'no block when there is nothing to read back')
+  assert.ok(!/yesterday/i.test(sent[0]), 'the gap is not remarked on')
+})
+
+test("readDay hands the assistant yesterday's summary alongside the day", async () => {
+  const journal = makeMemoryJournal()
+  await journal.upsert('day-summary', '2026-07-14', {
+    date: '2026-07-14',
+    title: 'Reflection · 2026-07-14',
+    body: 'Grateful for the quiet hour.',
+  })
+  const deps = makeDeps({ journal })
+
+  const withThread = await readDay('2026-07-15', deps)
+  assert.equal(withThread.yesterdaySummary, 'Grateful for the quiet hour.')
+
+  const cold = await readDay('2026-07-10', deps)
+  assert.equal(cold.yesterdaySummary, undefined, 'no summary yesterday → the field is simply absent')
 })
 
 test('sendDailyNudge on a fresh start sends normally, with no guilt opener but the honest less-often line', async () => {

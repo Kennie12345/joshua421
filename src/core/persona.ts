@@ -91,8 +91,15 @@ export const FIXED_CENTRE =
  * conversation, asked by the assistant (in Claude Desktop the full persona is
  * already present via the MCP instructions). The brevity instruction rides here
  * so even a persona-less web assistant keeps the exchange short.
+ *
+ * On the church evening (`church`), the look-back widens: church is the week's
+ * highest-leverage reorientation, so the ask carries the post-church prompt at
+ * full weight — what they took from church, and how it shapes the week ahead.
  */
-export function companionFrame(kind: 'morning' | 'evening'): string {
+export function companionFrame(kind: 'morning' | 'evening', opts: { church?: boolean } = {}): string {
+  if (kind === 'evening' && opts.church) {
+    return 'Help me reflect on what I took from church today, and how it can shape the week ahead. Ask me one brief question at a time, and keep your replies short.'
+  }
   return kind === 'morning'
     ? 'Help me set this day before the Lord. Ask me one brief question at a time, and keep your replies short.'
     : 'Help me look back over this day and notice where God was in it. Ask me one brief question at a time, and keep your replies short.'
@@ -139,16 +146,32 @@ const DAY_QUESTIONS: Record<'morning' | 'evening', readonly DayQuestion[]> = {
 }
 
 /**
+ * The church evening's own bank — the week's anchor, at full weight. The look-back
+ * widens from the day to the week: what they took from church, and how it shapes
+ * the week ahead. Every question welcomes (`onReturn: true`) — a return that lands
+ * on the church day is doubly welcome, never examined.
+ */
+const CHURCH_QUESTIONS: readonly DayQuestion[] = [
+  { text: 'What did you take from church today — a word, a moment, a person?', onReturn: true },
+  { text: 'How do you want what you heard today to shape the week ahead?', onReturn: true },
+  { text: "Looking back over the week, where do you see God's hand now that you didn't at the time?", onReturn: true },
+  { text: 'Who did you worship beside today that you could pray for this week?', onReturn: true },
+]
+
+/**
  * The two questions for `date`. `tone` comes from the cadence gate: on a 'return'
  * (a welcome-back after a gap) the bank narrows to the questions that welcome, so the
  * rotation can't land on self-examination under a "it's been a little while" opener.
+ * On the church evening (`church`) the bank is the post-church one — the week's
+ * reorientation, not another ordinary day.
  */
 export function dayQuestions(
   kind: 'morning' | 'evening',
   date: string,
   tone: CadenceTone = 'normal',
+  church = false,
 ): [string, string] {
-  const all = DAY_QUESTIONS[kind]
+  const all = kind === 'evening' && church ? CHURCH_QUESTIONS : DAY_QUESTIONS[kind]
   const bank = tone === 'return' ? all.filter((q) => q.onReturn) : all
   const day = Number(date.slice(8, 10)) || 0
   const first = day % bank.length

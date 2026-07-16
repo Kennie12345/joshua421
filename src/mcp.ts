@@ -42,7 +42,10 @@ server.registerTool(
   },
   async ({ date }) => {
     const day = date ?? isoDay(new Date())
-    const [events, goals] = await Promise.all([readDay(day, deps), deps.grounding.get()])
+    const [{ events, yesterdaySummary }, goals] = await Promise.all([
+      readDay(day, deps),
+      deps.grounding.get(),
+    ])
     // Present each event as the user's CALENDAR renders it (startLocal), never
     // as a bare UTC instant — JSON.stringify would render a Sydney 23:00 event as
     // "13:00Z", and the host LLM would tell the user "1pm", ten hours wrong.
@@ -66,7 +69,28 @@ server.registerTool(
             'quiet time, saved with set_grounding (partial is fine) — but only once, lightly; if they ' +
             "aren't interested, let it be and reflect from the day itself.",
         }
-    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events: shaped, ...ungrounded }, null, 2) }] }
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              date: day,
+              goals,
+              events: shaped,
+              // Yesterday's kept summary — THEIR words, read live from their
+              // calendar — so today's reflection can continue a thread rather
+              // than start cold. Absent when they kept nothing; never a gap to
+              // remark on.
+              ...(yesterdaySummary ? { yesterdaySummary } : {}),
+              ...ungrounded,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    }
   },
 )
 
