@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { INDUCTION, dayQuestions } from './persona'
+import { COMPANION_INSTRUCTIONS, INDUCTION, dayQuestions } from './persona'
 import { parseCadence } from './cadence'
 
 /**
@@ -90,6 +90,24 @@ test('a plain-word heading ends the section above it — prose below cannot leak
   // using a phrase the user wrote about their QUIET TIME, never about their rhythm.
   const doc = ['Rhythm', 'Every day please.', '', 'Quiet time', 'Mornings only, with coffee.'].join('\n')
   assert.equal(parseCadence(doc).evening, true, 'a quiet-time slot must not mute the evening nudge')
+})
+
+test('the persona knows the longer horizons and the exit off the screen', () => {
+  // The week/seasons rhythm and the send-off are load-bearing persona features
+  // (roadmap #4 and #6): the memorial is woven in conversation via look_back /
+  // save_rollup, and every reflection ends by handing the person OFF the screen.
+  for (const tool of ['look_back', 'save_rollup']) {
+    assert.ok(COMPANION_INSTRUCTIONS.includes(tool), `the persona must name ${tool} — an unnamed tool goes uncalled`)
+  }
+  assert.ok(/church evening/i.test(COMPANION_INSTRUCTIONS), "the week's look-back hangs off the church evening")
+  assert.ok(/sending them off|send them off|sending them/i.test(COMPANION_INSTRUCTIONS), 'the loop ends in a send-off')
+  assert.ok(/prayer or stillness/i.test(COMPANION_INSTRUCTIONS), 'the send-off names prayer and stillness')
+  assert.ok(
+    /toward a person|a named human|someone to sit with/i.test(COMPANION_INSTRUCTIONS),
+    'the send-off can hand them to a person, not only inward',
+  )
+  assert.ok(!/\bstreak\b/i.test(COMPANION_INSTRUCTIONS.replace(/don't break your streak|"streak"/gi, '')),
+    'streaks appear only inside the negative exemplars, never as guidance')
 })
 
 test('a welcome-back never opens with self-examination', () => {

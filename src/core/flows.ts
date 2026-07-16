@@ -4,6 +4,7 @@ import type { Reflection } from './reflection'
 import { companionFrame, dayQuestions, INDUCTION } from './persona'
 import { isoDay, shiftDay } from './day'
 import { parseCadence, decideCadence, type CadenceTone } from './cadence'
+import { periodFor, periodRange, rollupTitle, type RollupLevel } from './rollup'
 
 /**
  * Read the day's calendar entries for reflection, plus yesterday's kept summary
@@ -54,6 +55,84 @@ export async function applyDayNotes(
   }
   await deps.log.add(reflection)
   return reflection
+}
+
+/**
+ * Gather the raw material for a look-back — the memorial's read side. Returns
+ * the days they showed up, the day-summaries they kept (their OWN words), and
+ * any rollups already written over the range — all read live from the Journal
+ * and the Log, never from a store of ours. The WEAVING happens in the
+ * conversation: joshua421 hands over stones, the assistant helps them hear
+ * "look how faithful God has been". Summaries come back oldest-first, so the
+ * range reads as a story, not a feed.
+ *
+ * Give either an explicit `{since, until}`, or a `{level, date}` and the range
+ * is the period around that date (deterministic — the assistant never does
+ * calendar arithmetic). No range at all means this week.
+ */
+export async function lookBack(
+  input: { since?: string; until?: string; level?: RollupLevel; date?: string },
+  deps: Deps,
+): Promise<{
+  since: string
+  until: string
+  reflectedDays: string[]
+  summaries: { date: string; body: string }[]
+  rollups: { period: string; level?: string; title: string; body: string }[]
+}> {
+  const { since, until } =
+    input.since && input.until
+      ? { since: input.since, until: input.until }
+      : periodRange(input.level ?? 'week', input.date ?? isoDay(deps.clock()))
+
+  const [reflections, summaries, rollups] = await Promise.all([
+    deps.log.reflections(since),
+    deps.journal.query({ kind: 'day-summary', since, until }),
+    deps.journal.query({ kind: 'rollup', since, until }),
+  ])
+  const reflectedDays = [
+    ...new Set(reflections.filter((r) => r.date <= until && r.status === 'shown-up').map((r) => r.date)),
+  ].sort()
+
+  return {
+    since,
+    until,
+    reflectedDays,
+    summaries: summaries.map((e) => ({ date: e.date, body: e.body })).reverse(),
+    rollups: rollups.map((e) => ({
+      period: e.period,
+      ...(e.tags?.level ? { level: e.tags.level } : {}),
+      title: e.title,
+      body: e.body,
+    })),
+  }
+}
+
+/**
+ * Keep an APPROVED look-back distillation as the period's own Journal entry —
+ * the memorial's write side. One rollup per period (the Journal's upsert
+ * identity), so re-visiting a week replaces its stone rather than piling a
+ * second. Records that a look-back happened (behaviour only — the Log never
+ * sees the words).
+ */
+export async function saveRollup(
+  input: { level: RollupLevel; date: string; body: string; title?: string },
+  deps: Deps,
+): Promise<{ period: string }> {
+  const period = periodFor(input.level, input.date)
+  await deps.journal.upsert('rollup', period, {
+    date: input.date,
+    title: input.title ?? rollupTitle(input.level, period),
+    body: input.body,
+    tags: { level: input.level },
+  })
+  await deps.log.add({
+    id: randomUUID(),
+    date: input.date,
+    kind: 'look-back',
+    status: 'shown-up',
+  })
+  return { period }
 }
 
 /**

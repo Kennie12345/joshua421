@@ -2,7 +2,7 @@ import './env'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { readDay, applyDayNotes, isoDay } from './core/flows'
+import { readDay, applyDayNotes, lookBack, saveRollup, isoDay } from './core/flows'
 import { makeProdDeps } from './prod-deps'
 import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION } from './core/persona'
 
@@ -116,6 +116,57 @@ server.registerTool(
     if (summary) parts.push('Added a day summary.')
     parts.push('Reflection recorded.')
     return { content: [{ type: 'text', text: parts.join(' ') }] }
+  },
+)
+
+// ── the memorial: look back over a horizon, and keep what it distils to ──────
+
+server.registerTool(
+  'look_back',
+  {
+    description:
+      'Gather the raw material for a look-back over a period — the memorial ("look how faithful ' +
+      'God has been", Joshua 4). Returns the days they showed up, the day-summaries they kept (their ' +
+      'OWN words), and any rollups already written. YOU weave it in the conversation: lead with what ' +
+      'God did, in their words; presence reads as memorial ("look how God has met you"), NEVER as a ' +
+      'scorecard — no counting the days they were absent. Natural moments: their church evening (the ' +
+      "week's look-back), a month or season genuinely turning, or whenever they ask. When a look-back " +
+      'lands somewhere true, offer to keep it with save_rollup. Pass since/until, or level + date ' +
+      '(the period around that date); no range means this week. ' +
+      FIXED_CENTRE,
+    inputSchema: {
+      since: z.string().optional(),
+      until: z.string().optional(),
+      level: z.enum(['week', 'month', 'season', 'year']).optional(),
+      date: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const memorial = await lookBack(input, deps)
+    return { content: [{ type: 'text', text: JSON.stringify(memorial, null, 2) }] }
+  },
+)
+
+server.registerTool(
+  'save_rollup',
+  {
+    description:
+      "Keep a user-APPROVED look-back distillation as that period's own calendar entry — a stone in " +
+      'the memorial (one per week / month / season / year; re-keeping a period replaces its stone). ' +
+      'Write it in THEIR voice from the conversation — the particulars they named, what God did — and ' +
+      'confirm the text with them before saving. The year rollup is the headline: "your year with ' +
+      'God". ' +
+      FIXED_CENTRE,
+    inputSchema: {
+      level: z.enum(['week', 'month', 'season', 'year']),
+      date: z.string(),
+      body: z.string(),
+      title: z.string().optional(),
+    },
+  },
+  async ({ level, date, body, title }) => {
+    const { period } = await saveRollup({ level, date, body, title }, deps)
+    return { content: [{ type: 'text', text: `Kept the ${level} rollup (${period}) in your calendar.` }] }
   },
 )
 

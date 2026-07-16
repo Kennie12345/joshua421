@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyDayNotes, composeDayEmail, readDay, sendDailyNudge, sendWelcomeEmail } from './flows'
+import {
+  applyDayNotes,
+  composeDayEmail,
+  lookBack,
+  readDay,
+  saveRollup,
+  sendDailyNudge,
+  sendWelcomeEmail,
+} from './flows'
 import { dayQuestions, INDUCTION } from './persona'
 import type { Reflection } from './reflection'
 import { makeMemoryJournal, makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
@@ -370,6 +378,83 @@ test("readDay hands the assistant yesterday's summary alongside the day", async 
 
   const cold = await readDay('2026-07-10', deps)
   assert.equal(cold.yesterdaySummary, undefined, 'no summary yesterday → the field is simply absent')
+})
+
+// ── the memorial: look_back gathers, save_rollup keeps ────────────────────────
+
+test('lookBack hands over the period’s stones — days shown up, their words, existing rollups', async () => {
+  const log = makeMemoryLog()
+  const journal = makeMemoryJournal()
+  for (const date of ['2026-07-13', '2026-07-15', '2026-07-15', '2026-07-20']) {
+    await log.add(reflectedOn(date)) // 15th twice (a morning and an evening), 20th out of range
+  }
+  await journal.upsert('day-summary', '2026-07-13', {
+    date: '2026-07-13',
+    title: 'Reflection · 2026-07-13',
+    body: 'Monday: peace before the review.',
+  })
+  await journal.upsert('day-summary', '2026-07-15', {
+    date: '2026-07-15',
+    title: 'Reflection · 2026-07-15',
+    body: 'Wednesday: patience, barely, and grace for it.',
+  })
+  await journal.upsert('rollup', '2026-W28', {
+    date: '2026-07-12',
+    title: 'Your week with God · 2026-W28',
+    body: 'Last week in one line.',
+    tags: { level: 'week' },
+  })
+  await journal.upsert('day-summary', '2026-07-20', {
+    date: '2026-07-20',
+    title: 'Reflection · 2026-07-20',
+    body: 'OUT OF RANGE',
+  })
+  const deps = makeDeps({ log, journal })
+
+  const memorial = await lookBack({ since: '2026-07-12', until: '2026-07-19' }, deps)
+
+  assert.deepEqual(memorial.reflectedDays, ['2026-07-13', '2026-07-15'], 'days deduped, bounded, sorted')
+  assert.deepEqual(
+    memorial.summaries.map((s) => s.date),
+    ['2026-07-13', '2026-07-15'],
+    'summaries read oldest-first — a story, not a feed',
+  )
+  assert.ok(memorial.summaries[1].body.includes('patience'), 'their own words come back verbatim')
+  assert.deepEqual(
+    memorial.rollups.map((r) => [r.period, r.level]),
+    [['2026-W28', 'week']],
+    'existing rollups ride along with their level',
+  )
+  assert.ok(!JSON.stringify(memorial).includes('OUT OF RANGE'))
+})
+
+test('lookBack with level+date resolves the period deterministically; no range means this week', async () => {
+  const deps = makeDeps({ clock: () => new Date('2026-07-15T09:00:00') })
+  const week = await lookBack({}, deps)
+  assert.deepEqual([week.since, week.until], ['2026-07-13', '2026-07-19'], 'default = the week around today')
+  const month = await lookBack({ level: 'month', date: '2026-07-19' }, deps)
+  assert.deepEqual([month.since, month.until], ['2026-07-01', '2026-07-31'])
+})
+
+test('saveRollup keeps ONE stone per period and records behaviour only', async () => {
+  const log = makeMemoryLog()
+  const journal = makeMemoryJournal()
+  const deps = makeDeps({ log, journal })
+
+  await saveRollup({ level: 'week', date: '2026-07-19', body: 'ROLLUP_SENTINEL first' }, deps)
+  const { period } = await saveRollup({ level: 'week', date: '2026-07-17', body: 'ROLLUP_SENTINEL kept' }, deps)
+
+  assert.equal(period, '2026-W29', 'any day of the week names the same period')
+  const stones = await journal.query({ kind: 'rollup' })
+  assert.equal(stones.length, 1, 're-keeping a period replaces its stone, never piles a second')
+  assert.equal(stones[0].body, 'ROLLUP_SENTINEL kept')
+  assert.equal(stones[0].title, 'Your week with God · 2026-W29')
+  assert.equal(stones[0].tags?.level, 'week')
+
+  // The Log records THAT a look-back happened — never a word of it.
+  assert.equal(log.rows.length, 2)
+  assert.equal(log.rows[0].kind, 'look-back')
+  assert.ok(!JSON.stringify(log.rows).includes('ROLLUP_SENTINEL'), 'rollup text must never reach the log')
 })
 
 test('sendDailyNudge on a fresh start sends normally, with no guilt opener but the honest less-often line', async () => {
