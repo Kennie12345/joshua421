@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyDayNotes, composeDayEmail, sendDailyNudge } from './flows'
-import { dayQuestions } from './persona'
+import { applyDayNotes, composeDayEmail, sendDailyNudge, sendWelcomeEmail } from './flows'
+import { dayQuestions, INDUCTION } from './persona'
 import type { Reflection } from './reflection'
-import { makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
+import { makeMemoryJournal, makeMemoryLog, makeMemoryDiary, makeDeps } from '../testing/fakes'
 
 const reflectedOn = (date: string): Reflection => ({ id: date, date, kind: 'after', status: 'shown-up' })
 const groundingOf = (doc: string | null) => ({ async get() { return doc }, async set() {} })
@@ -20,10 +20,11 @@ const groundingOf = (doc: string | null) => ({ async get() { return doc }, async
 const NOTE_SENTINEL = 'SENTINEL_NOTE_a1b2c3'
 const SUMMARY_SENTINEL = 'SENTINEL_SUMMARY_d4e5f6'
 
-test('applyDayNotes records behaviour only; content flows to the diary, never the log', async () => {
+test('applyDayNotes records behaviour only; summary flows to the Journal, never the log', async () => {
   const log = makeMemoryLog()
   const diary = makeMemoryDiary()
-  const deps = makeDeps({ log, diary })
+  const journal = makeMemoryJournal()
+  const deps = makeDeps({ log, diary, journal })
 
   const reflection = await applyDayNotes(
     {
@@ -47,9 +48,11 @@ test('applyDayNotes records behaviour only; content flows to the diary, never th
   assert.ok(!serialized.includes(NOTE_SENTINEL), 'note text must never reach the log')
   assert.ok(!serialized.includes(SUMMARY_SENTINEL), 'summary text must never reach the log')
 
-  // The content went to the user's own calendar (the Diary).
+  // Notes remain on the user's Diary; the summary is its own Journal entry.
   assert.deepEqual(diary.annotations, [{ eventId: 'e1', note: NOTE_SENTINEL }])
-  assert.deepEqual(diary.summaries, [{ date: '2026-07-01', summary: SUMMARY_SENTINEL }])
+  assert.equal(journal.entries.length, 1)
+  assert.ok(JSON.stringify(journal.entries).includes(SUMMARY_SENTINEL))
+  assert.ok(!JSON.stringify(journal.entries).includes(NOTE_SENTINEL))
 })
 
 test('applyDayNotes with no notes and no summary records exactly one reflection, touches the diary zero times', async () => {
@@ -61,7 +64,15 @@ test('applyDayNotes with no notes and no summary records exactly one reflection,
 
   assert.equal(log.rows.length, 1)
   assert.equal(diary.annotations.length, 0)
-  assert.equal(diary.summaries.length, 0)
+  assert.equal((await deps.journal.query()).length, 0)
+})
+
+test('applyDayNotes upserts one day summary when launchd fires twice', async () => {
+  const journal = makeMemoryJournal()
+  const deps = makeDeps({ journal })
+  await applyDayNotes({ date: '2026-07-02', notes: [], summary: 'first' }, deps)
+  await applyDayNotes({ date: '2026-07-02', notes: [], summary: 'second' }, deps)
+  assert.deepEqual(journal.entries.map((entry) => entry.body), ['second'])
 })
 
 test("composeDayEmail prints the calendar's wall-clock label, never a host-localized time", async () => {
@@ -171,6 +182,45 @@ test('the nudge never wields a scorecard — grace-not-guilt is asserted, not ho
   for (const scorecard of ['streak', 'missed', 'back on track', "don't break", 'behind', 'catch up']) {
     assert.ok(!all.includes(scorecard), `the nudge must never say "${scorecard}"`)
   }
+})
+
+test('the welcome email carries the induction through both doors — deep-link and paste path', async () => {
+  const sent: { subject: string; body: string; html: string }[] = []
+  await sendWelcomeEmail(async (subject, body, html) => {
+    sent.push({ subject, body, html: html ?? '' })
+  })
+
+  assert.equal(sent.length, 1)
+  const { body, html } = sent[0]
+
+  // Door one: the Claude Desktop deep-link (where the MCP tools are present)
+  // carries the induction as the conversation starter.
+  const link = body.match(/claude:\/\/\S+/)?.[0]
+  assert.ok(link, 'the deep-link rides the plain body')
+  assert.ok(
+    decodeURIComponent(link!).includes('getting started with joshua421'),
+    'the deep-link starts the induction conversation',
+  )
+
+  // Door two: the induction itself, verbatim, to paste into ANY assistant —
+  // in the plain body and the HTML twin (the surface clients actually render).
+  assert.ok(body.includes(INDUCTION), 'the induction rides the plain body verbatim')
+  const inductionFirstLine = INDUCTION.split('\n')[0]
+  assert.ok(html.includes(inductionFirstLine), 'the induction rides the HTML twin')
+
+  // Honest framing: both doors need the set_grounding tool, so the paste block is
+  // scoped to Claude Desktop (its fallback), never over-promised as "any assistant";
+  // and the email names the restart so a just-connected user's first click has tools.
+  assert.ok(/restart claude desktop/i.test(body), 'the email names the restart prerequisite')
+  assert.ok(/claude desktop/i.test(body.split(INDUCTION)[0].split('paste')[1] ?? ''), 'the paste path is scoped to Claude Desktop')
+  assert.ok(!/paste this into any assistant/i.test(body), 'the welcome paste path is not over-promised as "any assistant"')
+
+  // And the same grace as every nudge — no scorecard, and an honest volume knob.
+  const all = `${body}\n${html}`.toLowerCase()
+  for (const scorecard of ['streak', 'missed', 'behind']) {
+    assert.ok(!all.includes(scorecard), `the welcome must never say "${scorecard}"`)
+  }
+  assert.ok(body.includes('Fewer of these?'), 'the honest less-often line is offered from day one')
 })
 
 // ── cadence that breathes: the gate before composing ─────────────────────────

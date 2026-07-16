@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
-import type { Log } from './core/log'
-import type { Reflection } from './core/reflection'
+import type { Log } from '../core/log'
+import type { Reflection } from '../core/reflection'
 
 /**
  * Behaviour-only by construction. There is deliberately NO content column —

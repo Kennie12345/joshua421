@@ -25,6 +25,7 @@
  * register is taught by CONTRAST (the bank below), because concrete pairs steer the
  * voice more reliably than abstract rules do.
  */
+import type { CadenceTone } from './cadence'
 
 export const COMPANION_INSTRUCTIONS = `joshua421 helps a follower of Jesus reflect on their day and set it before the Lord, and — only with their approval — writes that reflection into their calendar, so it shapes the day and not just their inbox. When you use these tools, be that companion.
 
@@ -97,38 +98,65 @@ export function companionFrame(kind: 'morning' | 'evening'): string {
     : 'Help me look back over this day and notice where God was in it. Ask me one brief question at a time, and keep your replies short.'
 }
 
+interface DayQuestion {
+  readonly text: string
+  /**
+   * May this be asked of someone coming back after a gap? A welcome-back must not
+   * open with self-examination: "What went wrong today, and where do you need grace?"
+   * printed three lines under "It's been a little while" reads as an accusation no
+   * matter how gentle the opener, and it is the one email a returning person actually
+   * receives. Grace, not guilt — asserted here in the data, because the rotation is
+   * deterministic and cannot be trusted to a word blacklist downstream.
+   */
+  readonly onReturn: boolean
+}
+
 /**
  * The paste path: two questions the user can answer THEMSELVES — then paste
  * question + answer into any assistant to go deeper, or keep in their diary as
  * they are. Deterministic (the worker calls no model), rotated by date so the
  * pair varies day to day and never reads as a form. The bank keeps the persona's
  * register: particular, discerning not pronouncing, no silver linings.
+ *
+ * Every bank — and every `onReturn` SUBSET of a bank — must keep length >= 3, so the
+ * pair both varies by date and stays distinct. `persona.test.ts` pins this.
  */
-const DAY_QUESTIONS: Record<'morning' | 'evening', readonly string[]> = {
+const DAY_QUESTIONS: Record<'morning' | 'evening', readonly DayQuestion[]> = {
   morning: [
-    'What part of today do you most need God for?',
-    'What are you walking into today — and how do you want to walk in?',
-    'What in today can you hand to God before it starts?',
-    'Who will you meet today that you could pray for now?',
+    { text: 'What part of today do you most need God for?', onReturn: true },
+    { text: 'What are you walking into today — and how do you want to walk in?', onReturn: true },
+    { text: 'What in today can you hand to God before it starts?', onReturn: true },
+    { text: 'Who will you meet today that you could pray for now?', onReturn: true },
   ],
   evening: [
-    'Where did you notice God today — or where did it feel like He was absent?',
-    'What from today are you thankful for? Name the particular.',
-    "What's still sitting heavy from today?",
-    'What went wrong today, and where do you need grace?',
-    'Who crossed your path today that you could hold up in prayer?',
+    { text: 'Where did you notice God today — or where did it feel like He was absent?', onReturn: true },
+    { text: 'What from today are you thankful for? Name the particular.', onReturn: true },
+    { text: "What's still sitting heavy from today?", onReturn: true },
+    // Self-examination. Right on an ordinary evening; an accusation on a welcome-back.
+    { text: 'What went wrong today, and where do you need grace?', onReturn: false },
+    { text: 'Who crossed your path today that you could hold up in prayer?', onReturn: true },
   ],
 }
 
-export function dayQuestions(kind: 'morning' | 'evening', date: string): [string, string] {
-  const bank = DAY_QUESTIONS[kind] // invariant: length >= 3, so the pair both varies and stays distinct
+/**
+ * The two questions for `date`. `tone` comes from the cadence gate: on a 'return'
+ * (a welcome-back after a gap) the bank narrows to the questions that welcome, so the
+ * rotation can't land on self-examination under a "it's been a little while" opener.
+ */
+export function dayQuestions(
+  kind: 'morning' | 'evening',
+  date: string,
+  tone: CadenceTone = 'normal',
+): [string, string] {
+  const all = DAY_QUESTIONS[kind]
+  const bank = tone === 'return' ? all.filter((q) => q.onReturn) : all
   const day = Number(date.slice(8, 10)) || 0
   const first = day % bank.length
   // Offset in 1..len-1: never 0 (so second !== first), and it advances with the
   // date so the pairing cycles instead of clumping. A fixed len/2 offset is an
   // involution on an even-length bank — it would only ever ship two distinct pairs.
   const second = (first + 1 + (day % (bank.length - 1))) % bank.length
-  return [bank[first], bank[second]]
+  return [bank[first].text, bank[second].text]
 }
 
 /**

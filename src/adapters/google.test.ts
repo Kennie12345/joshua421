@@ -11,7 +11,6 @@ import { makeGoogleDiary } from './google'
  *    NEVER the user's own words — including words they add after our block;
  *  - reversal is a no-op whenever our block is ambiguous (marker the user typed,
  *    missing fence, more than one) rather than risking their text;
- *  - unwriteSummary deletes only our own tagged summaries for that exact date.
  * A stateful fake client models get/patch so annotate→edit→strip round-trips.
  */
 
@@ -114,20 +113,6 @@ test('day() drops an event-definition zone that contradicts the calendar renderi
   assert.equal(events[1].timeZone, undefined)
 })
 
-test('day() reads the READ calendar; writeSummary writes the STORE calendar, tagged', async () => {
-  const { cal, calls } = fakeCalendar()
-  const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ', storeCalendarId: 'STORE' })
-
-  await diary.day('2026-07-01')
-  await diary.writeSummary('2026-07-01', 'a gentle summary')
-
-  assert.equal(calls.listed[0].calendarId, 'READ')
-  assert.equal(calls.inserted[0].calendarId, 'STORE')
-  const priv = calls.inserted[0].requestBody?.extendedProperties?.private ?? {}
-  assert.equal(priv.joshua421, 'true')
-  assert.equal(priv.joshua421Kind, 'day-summary')
-})
-
 test('annotate → user edits BELOW our block → strip restores the user’s words, losing nothing', async () => {
   const { cal, state } = fakeCalendar({ description: 'Standup with the team' })
   const diary = makeGoogleDiary({ calendar: cal, readCalendarId: 'READ' })
@@ -194,20 +179,4 @@ test('annotate refuses a public event (world-readable description)', async () =>
   const { cal } = fakeCalendar({ description: 'x', visibility: 'public' })
   const diary = makeGoogleDiary({ calendar: cal })
   await assert.rejects(() => diary.annotate('e1', 'private confession'))
-})
-
-test('unwriteSummary deletes only our tagged day-summaries for that exact date', async () => {
-  const listItems: calendar_v3.Schema$Event[] = [
-    { id: 'right', extendedProperties: { private: { joshua421: 'true', joshua421Kind: 'day-summary', joshua421Date: '2026-07-01' } } },
-    { id: 'wrong-kind', extendedProperties: { private: { joshua421: 'true', joshua421Kind: 'rollup', joshua421Date: '2026-07-01' } } },
-    { id: 'wrong-date', extendedProperties: { private: { joshua421: 'true', joshua421Kind: 'day-summary', joshua421Date: '2026-07-02' } } },
-    { id: 'not-ours', extendedProperties: { private: {} } },
-  ]
-  const { cal, calls } = fakeCalendar({ listItems })
-  const diary = makeGoogleDiary({ calendar: cal, storeCalendarId: 'STORE' })
-
-  await diary.unwriteSummary('2026-07-01')
-
-  assert.deepEqual(calls.deleted.map((d) => d.eventId), ['right'])
-  assert.equal(calls.deleted[0].calendarId, 'STORE')
 })

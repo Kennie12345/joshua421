@@ -52,35 +52,67 @@ const DAY_NAMES: Record<string, number> = {
 const DEFAULT_CADENCE: Cadence = { morning: true, evening: true, days: 'daily' }
 
 /**
+ * The labelled blocks the induction asks an assistant to write (see INDUCTION in
+ * persona.ts). A bare line naming one of these ENDS the preceding section.
+ *
+ * Grounding docs are written with plain-word headings — "Rhythm", "Church", "Quiet
+ * time" — carrying no markdown and no colon. Without this list none of them reads as
+ * a boundary, so a heading section runs to the end of the file and swallows every
+ * answer below it: a "Rhythm" section absorbs the church day, the quiet-time slot and
+ * the goals, and "mornings only" mentioned under Quiet time silently mutes the evening
+ * nudge. Matching only KNOWN labels — rather than guessing that any short line is a
+ * heading — keeps a bare VALUE ("Weekdays" written under a "Rhythm" heading) from
+ * being mistaken for the start of a new block.
+ */
+const SECTION_LABEL =
+  /^\s*(goals?|tone|language|rhythm|regularity|cadence|church|quiet[\s-]?time|reading\s+plan|rule|preferences|orientation)\b[\sa-z&/-]{0,20}$/i
+
+/**
  * Pull the text of a labelled section out of the freeform grounding doc, tolerant
  * of the shapes an assistant actually writes: an inline `Rhythm: weekdays`, or a
- * heading (`## Rhythm` / `**Rhythm**`) with the value on the lines below. Scoped to
- * the section so prose elsewhere (a goal that mentions "evening prayer") can't leak
- * into the parse. Returns lowercased text, or null if the label isn't present.
+ * heading (`Rhythm` / `## Rhythm` / `**Rhythm**`) with the value on the lines below.
+ * Scoped to the section so prose elsewhere (a goal that mentions "evening prayer")
+ * can't leak into the parse. Returns lowercased text, or null if the label is absent.
+ *
+ * An inline `Label: value` BEATS a heading section, because the induction asks for
+ * both: prose for the human, plus a canonical machine-readable line ("record my rhythm
+ * as one of these exact words"). The prose is commentary; the canonical line is the
+ * answer. Reading the prose instead is how "Rhythm: mornings only" lost to "A daily
+ * nudge, landing in the morning" and shipped evening mail to someone who'd switched it
+ * off. Among several inline lines the LAST wins — a later explicit statement overrides
+ * an earlier one, and the canonical block is conventionally appended.
  */
 function sectionText(doc: string, label: RegExp): string | null {
   const lines = doc.split('\n')
-  // A line that begins a NEW labelled block — where this section ends.
+  // A line that begins a NEW labelled block — where the preceding section ends.
   const isBoundary = (line: string) =>
     /^\s*#{1,6}\s+\S/.test(line) || // markdown heading
     /^\s*\*\*[^*]+\*\*/.test(line) || // **bold label**
-    /^\s*[A-Za-z][A-Za-z &/]{1,24}\s*:/.test(line) // Inline Label:
+    /^\s*[A-Za-z][A-Za-z &/]{1,24}\s*:/.test(line) || // Inline Label:
+    SECTION_LABEL.test(line) // bare-word heading: "Church"
+
+  let heading: string | null = null // the FIRST heading-only section
+  let inline: string | null = null // the LAST `Label: value` — authoritative
+
   for (let i = 0; i < lines.length; i++) {
     const head = lines[i].match(label)
     if (!head) continue
-    // Value inline after the label on the same line…
-    const inline = lines[i].slice(head.index! + head[0].length).replace(/^[\s:*\-–—]+/, '')
-    const collected = inline ? [inline] : []
-    // …else (heading-only) gather following lines until the next labelled block.
-    if (!inline) {
-      for (let j = i + 1; j < lines.length; j++) {
-        if (isBoundary(lines[j])) break
-        if (lines[j].trim()) collected.push(lines[j])
-      }
+    const value = lines[i].slice(head.index! + head[0].length).replace(/^[\s:*\-–—]+/, '')
+    if (value) {
+      inline = value
+      continue // keep scanning — a later canonical line overrides this one
     }
-    return collected.join(' ').toLowerCase().trim()
+    if (heading !== null) continue
+    const collected: string[] = []
+    for (let j = i + 1; j < lines.length; j++) {
+      if (isBoundary(lines[j])) break
+      if (lines[j].trim()) collected.push(lines[j])
+    }
+    heading = collected.join(' ')
   }
-  return null
+
+  const text = inline ?? heading
+  return text === null ? null : text.toLowerCase().trim()
 }
 
 /**

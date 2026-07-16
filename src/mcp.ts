@@ -1,12 +1,9 @@
 import './env'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import type { Deps } from './core/deps'
 import { z } from 'zod'
 import { readDay, applyDayNotes, isoDay } from './core/flows'
-import { makeSqliteLog } from './log-sqlite'
-import { makeGoogleDiary, makeGoogleMailer } from './google'
-import { makeFileGrounding } from './grounding-file'
+import { makeProdDeps } from './prod-deps'
 import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION } from './core/persona'
 
 /**
@@ -22,13 +19,7 @@ console.error(
     `google=${process.env.GOOGLE_REFRESH_TOKEN ? 'set' : 'MISSING'}`,
 )
 
-const deps: Deps = {
-  mailer: makeGoogleMailer(),
-  diary: makeGoogleDiary(),
-  grounding: makeFileGrounding(),
-  log: makeSqliteLog(),
-  clock: () => new Date(),
-}
+const deps = makeProdDeps()
 
 // The `instructions` are injected into the host LLM as context about this server,
 // so the WHOLE conversation is in character — not just the moment a tool fires.
@@ -61,7 +52,21 @@ server.registerTool(
       start: startLocal ?? start.toISOString(),
       ...(timeZone ? { timeZone } : {}),
     }))
-    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events: shaped }, null, 2) }] }
+    // No grounding yet: say so IN the tool result, where the assistant is
+    // actually looking (the `begin` prompt covers this too, but it hides in the
+    // client's prompt picker). A standing fact, not a repeated pitch — if they've
+    // waved it off before, don't press; you can still reflect from the day alone.
+    const ungrounded = goals
+      ? {}
+      : {
+          groundingSet: false,
+          hint:
+            'No preferences are saved yet. If it fits the moment, you might gently offer to set them ' +
+            'up — what they hope God will grow in them this season, then tone, rhythm, church day, ' +
+            'quiet time, saved with set_grounding (partial is fine) — but only once, lightly; if they ' +
+            "aren't interested, let it be and reflect from the day itself.",
+        }
+    return { content: [{ type: 'text', text: JSON.stringify({ date: day, goals, events: shaped, ...ungrounded }, null, 2) }] }
   },
 )
 
@@ -101,7 +106,12 @@ server.registerTool(
   },
   async () => {
     const prefs = await deps.grounding.get()
-    return { content: [{ type: 'text', text: prefs ?? '(no preferences saved yet)' }] }
+    const empty =
+      '(no preferences saved yet. If it fits the moment, you might gently offer to set them up — ' +
+      'what they hope God will grow in them this season, then tone, rhythm, church day, quiet time — ' +
+      'a conversation, not a form — saved with set_grounding (partial is fine). Only once, lightly; ' +
+      "if they aren't interested, let it be.)"
+    return { content: [{ type: 'text', text: prefs ?? empty }] }
   },
 )
 

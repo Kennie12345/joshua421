@@ -1,49 +1,38 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { marker } from './journal'
 import { makeMemoryJournal } from '../testing/fakes'
 
-/**
- * Round-trips the in-memory Journal — proving the fake behaves (add/query/update/
- * delete, newest-first, filters), so it's a trustworthy double for the seam re-cut.
- * The empty-body invariant is NOT asserted here: nothing calls journal.add yet, so
- * it would be vacuous. It lands with the migration (when flows records via the
- * Journal), where a type-level constructor makes a 'reflection' entry unable to
- * carry content.
- */
+test('memory Journal upserts one entry per kind and period', async () => {
+  const journal = makeMemoryJournal()
+  await journal.upsert('day-summary', '2026-07-01', { date: '2026-07-01', title: 'first', body: 'one' })
+  await journal.upsert('day-summary', '2026-07-01', { date: '2026-07-01', title: 'replaced', body: 'two' })
+  await journal.upsert('day-summary', '2026-07-02', { date: '2026-07-02', title: 'other', body: 'three' })
 
-test('memory journal round-trips add / query / update / delete', async () => {
-  const j = makeMemoryJournal()
+  assert.equal(journal.entries.length, 2)
+  assert.deepEqual((await journal.query()).map((entry) => entry.body), ['three', 'two'])
+})
 
-  const a = await j.add({
-    kind: 'day-summary',
-    date: '2026-07-01',
-    title: 'A',
-    body: 'body a',
-    tags: { level: 'daily' },
+test('memory Journal filters inclusively, ANDs tags, and deletes only its entry', async () => {
+  const journal = makeMemoryJournal()
+  const daily = await journal.upsert('day-summary', '2026-07-01', {
+    date: '2026-07-01', title: 'daily', body: 'a', tags: { level: 'daily', season: 'ordinary' },
   })
-  const b = await j.add({
-    kind: 'rollup',
-    date: '2026-07-03',
-    title: 'B',
-    body: 'body b',
-    tags: { level: 'weekly' },
+  await journal.upsert('rollup', '2026-W27', {
+    date: '2026-07-03', title: 'weekly', body: 'b', tags: { level: 'weekly', season: 'ordinary' },
   })
-  assert.ok(a.id && b.id && a.id !== b.id, 'entries get distinct ids')
+  await journal.upsert('day-summary', '2026-07-04', {
+    date: '2026-07-04', title: 'late', body: 'c', tags: { level: 'daily', season: 'special' },
+  })
 
-  // newest first
-  assert.deepEqual((await j.query()).map((e) => e.title), ['B', 'A'])
-  // filter by kind
-  assert.deepEqual((await j.query({ kind: 'rollup' })).map((e) => e.title), ['B'])
-  // filter by tag (ANDed)
-  assert.deepEqual((await j.query({ tags: { level: 'daily' } })).map((e) => e.title), ['A'])
-  // inclusive date range
-  assert.deepEqual((await j.query({ since: '2026-07-02' })).map((e) => e.title), ['B'])
+  assert.deepEqual((await journal.query({ kind: 'day-summary', period: '2026-07-01' })).map((e) => e.title), ['daily'])
+  assert.deepEqual((await journal.query({ since: '2026-07-01', until: '2026-07-03' })).map((e) => e.title), ['weekly', 'daily'])
+  assert.deepEqual((await journal.query({ tags: { level: 'daily', season: 'ordinary' } })).map((e) => e.title), ['daily'])
 
-  // update patches fields
-  await j.update(a.id, { title: 'A2' })
-  assert.equal((await j.query({ kind: 'day-summary' }))[0].title, 'A2')
+  await journal.delete(daily.id)
+  assert.deepEqual((await journal.query()).map((e) => e.title), ['late', 'weekly'])
+})
 
-  // delete removes only that entry
-  await j.delete(b.id)
-  assert.deepEqual((await j.query()).map((e) => e.title), ['A2'])
+test('a Marker can only be made from a day, so it cannot carry content', () => {
+  assert.equal(marker('2026-07-15').body, '')
 })

@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 import type { calendar_v3 } from 'googleapis'
-import type { DayEvent, Diary, Mailer } from './core/deps'
+import type { DayEvent, Diary, Mailer } from '../core/deps'
 
 /**
  * Google Workspace adapter — reads Calendar / Gmail / Drive and delivers via
@@ -73,16 +73,14 @@ function zoneRendersWallClock(instant: Date, rfc3339: string, timeZone: string):
 
 /**
  * The calendar AS a diary — read the day's entries, weave APPROVED notes into
- * them, and write the day's summary as an all-day entry. Additive only: notes
- * are appended below a marker; the user's own words are never touched.
+ * them. Additive only: notes are appended below a marker; the user's own words
+ * are never touched.
  */
 export function makeGoogleDiary(
   opts: {
     calendar?: calendar_v3.Calendar
     /** The user's real event calendar — read + annotated in place. */
     readCalendarId?: string
-    /** joshua421's own store calendar — where CREATED artifacts (summaries) live. */
-    storeCalendarId?: string
   } = {},
 ): Diary {
   const BLOCK_BEGIN = '— joshua421 —'
@@ -91,7 +89,6 @@ export function makeGoogleDiary(
   const BLOCK_END = '—·—'
   const cal = () => opts.calendar ?? getClients().calendar
   const readCalendarId = opts.readCalendarId ?? process.env.JOSHUA421_READ_CALENDAR_ID ?? 'primary'
-  const storeCalendarId = opts.storeCalendarId ?? process.env.JOSHUA421_CALENDAR_ID ?? 'primary'
 
   return {
     async day(date: string): Promise<DayEvent[]> {
@@ -205,52 +202,6 @@ export function makeGoogleDiary(
       })
     },
 
-    async writeSummary(date: string, summary: string): Promise<void> {
-      const calendar = cal()
-      // The day's diary entry: an all-day event holding the summary, on our store.
-      const next = new Date(`${date}T00:00:00`)
-      next.setDate(next.getDate() + 1)
-      const endDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
-      await calendar.events.insert({
-        calendarId: storeCalendarId,
-        requestBody: {
-          summary: `Reflection · ${date}`,
-          description: summary,
-          start: { date },
-          end: { date: endDate },
-          // Tag our own creation so it's findable (privateExtendedProperty) and
-          // reversible — never confused with one of the user's real events.
-          extendedProperties: {
-            private: { joshua421: 'true', joshua421Kind: 'day-summary', joshua421Date: date },
-          },
-        },
-      })
-    },
-
-    async unwriteSummary(date: string): Promise<void> {
-      const calendar = cal()
-      // Find OUR tagged summaries for this date on the store calendar and remove
-      // them — double-guarded by the tag, so a real event can never be deleted.
-      const res = await calendar.events.list({
-        calendarId: storeCalendarId,
-        privateExtendedProperty: [
-          'joshua421=true',
-          'joshua421Kind=day-summary',
-          `joshua421Date=${date}`,
-        ],
-        singleEvents: true,
-      })
-      for (const ev of res.data.items ?? []) {
-        if (!ev.id) continue
-        const priv = ev.extendedProperties?.private ?? {}
-        // Independent guard (not merely the server filter): our tag, this kind,
-        // this exact date — so a broader/again-quirky list can never over-delete.
-        if (priv.joshua421 !== 'true' || priv.joshua421Kind !== 'day-summary' || priv.joshua421Date !== date) {
-          continue
-        }
-        await calendar.events.delete({ calendarId: storeCalendarId, eventId: ev.id })
-      }
-    },
   }
 }
 

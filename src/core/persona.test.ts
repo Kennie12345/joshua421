@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { INDUCTION } from './persona'
+import { INDUCTION, dayQuestions } from './persona'
 import { parseCadence } from './cadence'
 
 /**
@@ -51,4 +51,82 @@ test('every rhythm word the induction names is one the cadence engine honours', 
     assert.ok(INDUCTION.includes(word), `induction should name the rhythm "${word}"`)
     assert.ok(honoured(parseCadence(`Rhythm: ${word}`)), `cadence must honour the rhythm "${word}"`)
   }
+})
+
+test('the canonical line beats the prose above it — the doc the induction actually produces', () => {
+  // REGRESSION. The induction asks for BOTH a plain preferences note AND a canonical
+  // machine-readable line, so an assistant obediently writes both — prose first,
+  // canonical block appended. Reading the prose instead of the line is what shipped
+  // 20:00 mail to a user whose rhythm said mornings only: "A daily nudge, landing in
+  // the morning" parses to days=daily with evening left at its default true.
+  // The tests above only ever fed the parser a canonical line in ISOLATION, which is
+  // the one shape a real grounding.md never has.
+  const doc = [
+    'Goals',
+    'To read the word and meditate with the Lord.',
+    '',
+    'Rhythm',
+    'A daily nudge, landing in the morning — to start the day in the word.',
+    '',
+    'Church',
+    'Sunday, 10am, finishing around midday. The whole morning matters.',
+    '',
+    'Quiet time',
+    'None kept yet.',
+    '',
+    'Rhythm: mornings only',
+    'Church: Sunday',
+  ].join('\n')
+  const c = parseCadence(doc)
+  assert.equal(c.evening, false, '"Rhythm: mornings only" must beat the prose section above it')
+  assert.equal(c.morning, true, 'a mornings-only rhythm still sends in the morning')
+  assert.equal(c.churchDay, 0, 'the church day must survive the same document (Sunday = 0)')
+})
+
+test('a plain-word heading ends the section above it — prose below cannot leak in', () => {
+  // REGRESSION. Grounding headings carry no markdown and no colon ("Rhythm",
+  // "Quiet time"), so without them as boundaries a section runs to the end of the
+  // file and swallows every answer below. Here that would mute the evening nudge
+  // using a phrase the user wrote about their QUIET TIME, never about their rhythm.
+  const doc = ['Rhythm', 'Every day please.', '', 'Quiet time', 'Mornings only, with coffee.'].join('\n')
+  assert.equal(parseCadence(doc).evening, true, 'a quiet-time slot must not mute the evening nudge')
+})
+
+test('a welcome-back never opens with self-examination', () => {
+  // The paste questions print three lines under "It's been a little while — there's
+  // no clock on this", so the rotation must be tone-aware: on a 'return' the bank
+  // narrows to the questions that welcome. Swept across a month because the rotation
+  // is date-driven, and a date-blind spot check passes while a single day ships an
+  // accusation. (2026-07-19 — a Sunday, his church day — served "What went wrong
+  // today, and where do you need grace?" under the welcome-back opener.)
+  for (let d = 1; d <= 31; d++) {
+    const date = `2026-07-${String(d).padStart(2, '0')}`
+    for (const kind of ['morning', 'evening'] as const) {
+      const [q1, q2] = dayQuestions(kind, date, 'return')
+      for (const q of [q1, q2]) {
+        assert.ok(
+          !/went wrong|need grace/i.test(q),
+          `${kind} ${date}: a welcome-back must not ask "${q}"`,
+        )
+      }
+      assert.notEqual(q1, q2, `${kind} ${date}: the pair must stay distinct on a return`)
+    }
+  }
+})
+
+test('an ordinary day still gets the full bank, self-examination included', () => {
+  // The return filter must narrow the welcome-back WITHOUT quietly retiring a good
+  // question from ordinary evenings — "honest before liked" needs it.
+  const asked = new Set<string>()
+  for (let d = 1; d <= 31; d++) {
+    const date = `2026-07-${String(d).padStart(2, '0')}`
+    const [q1, q2] = dayQuestions('evening', date)
+    asked.add(q1)
+    asked.add(q2)
+    assert.notEqual(q1, q2, `${date}: the pair must stay distinct`)
+  }
+  assert.ok(
+    [...asked].some((q) => /went wrong/i.test(q)),
+    'an ordinary evening should still ask what went wrong',
+  )
 })

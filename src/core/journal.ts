@@ -18,6 +18,8 @@ export type JournalKind =
 export interface JournalEntry {
   id: string
   kind: JournalKind
+  /** The identity key for this Journal entry — a day or a rollup period. */
+  period: string
   /** The day (or anchor day) this entry belongs to — YYYY-MM-DD. */
   date: string
   title: string
@@ -26,10 +28,9 @@ export interface JournalEntry {
   tags?: Record<string, string>
 }
 
-export type NewEntry = Omit<JournalEntry, 'id'>
-
 export interface JournalQuery {
   kind?: JournalKind
+  period?: string
   /** Inclusive YYYY-MM-DD bounds. */
   since?: string
   until?: string
@@ -38,12 +39,18 @@ export interface JournalQuery {
 }
 
 export interface Journal {
-  /** Create an entry; returns it with its id. */
-  add(entry: NewEntry): Promise<JournalEntry>
+  /** Write or replace the Journal entry for this kind and period. */
+  upsert(
+    kind: JournalKind,
+    periodKey: string,
+    entry: { date: string; title: string; body: string; tags?: Record<string, string> },
+  ): Promise<JournalEntry>
   /** Read entries by kind / date range / tags. Newest first. */
   query(q?: JournalQuery): Promise<JournalEntry[]>
-  /** Update an entry's fields. */
-  update(id: string, patch: Partial<NewEntry>): Promise<void>
   /** Delete an entry (the Journal only ever holds its own entries). */
   delete(id: string): Promise<void>
 }
+
+/** The Marker for a reflected day. Takes only the day — it CANNOT carry content. */
+export const marker = (date: string): { date: string; title: string; body: '' } =>
+  ({ date, title: 'Reflected', body: '' })

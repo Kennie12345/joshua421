@@ -2,9 +2,7 @@ import './env'
 import cron from 'node-cron'
 import type { Deps } from './core/deps'
 import { sendDailyNudge } from './core/flows'
-import { makeSqliteLog } from './log-sqlite'
-import { makeFileGrounding } from './grounding-file'
-import { makeGoogleDiary, makeGoogleMailer } from './google'
+import { makeProdDeps } from './prod-deps'
 
 /**
  * ENTRYPOINT 2 — the scheduled engine. Two daily nudge-emails that list the day
@@ -14,13 +12,7 @@ import { makeGoogleDiary, makeGoogleMailer } from './google'
  *   one-shot:  `worker <job>`   runs one job and exits → the launchd agents.
  *   daemon:    `worker`         keeps node-cron alive → handy for `npm run worker`.
  */
-const deps: Deps = {
-  mailer: makeGoogleMailer(),
-  diary: makeGoogleDiary(),
-  grounding: makeFileGrounding(),
-  log: makeSqliteLog(),
-  clock: () => new Date(),
-}
+const deps = makeProdDeps()
 
 // The two daily jobs — each runs the cadence gate, which sends at most one email.
 // The gate can decide NOT to send (rest day, deep-silence backoff, kind off); that

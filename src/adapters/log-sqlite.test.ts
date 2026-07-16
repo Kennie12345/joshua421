@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { makeSqliteLog, SCHEMA } from './log-sqlite'
-import type { Reflection } from './core/reflection'
+import type { Reflection } from '../core/reflection'
 
 /**
  * The STRUCTURAL guarantee at the adapter: the promise is enforced by the schema,

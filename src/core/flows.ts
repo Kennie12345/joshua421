@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
-import { companionFrame, dayQuestions } from './persona'
+import { companionFrame, dayQuestions, INDUCTION } from './persona'
 import { isoDay } from './day'
 import { parseCadence, decideCadence, type CadenceTone } from './cadence'
 
@@ -15,15 +15,21 @@ export async function readDay(date: string, deps: Deps): Promise<DayEvent[]> {
 
 /**
  * Apply the user-APPROVED notes (additive, into each event) plus an optional
- * day summary, and record that they reflected. Content flows through here but is
- * never stored — it goes to the user's own calendar; the log keeps behaviour only.
+ * day summary, and record that they reflected. The summary belongs to the Journal;
+ * the Log keeps behaviour only.
  */
 export async function applyDayNotes(
   input: { date: string; notes: { eventId: string; note: string }[]; summary?: string },
   deps: Deps,
 ): Promise<Reflection> {
   for (const n of input.notes) await deps.diary.annotate(n.eventId, n.note)
-  if (input.summary) await deps.diary.writeSummary(input.date, input.summary)
+  if (input.summary) {
+    await deps.journal.upsert('day-summary', input.date, {
+      date: input.date,
+      title: `Reflection · ${input.date}`,
+      body: input.summary,
+    })
+  }
   const reflection: Reflection = {
     id: randomUUID(),
     date: input.date,
@@ -92,7 +98,8 @@ export async function composeDayEmail(
   deps: Deps,
   opts: { tone?: CadenceTone } = {},
 ): Promise<void> {
-  const opener = toneOpener(opts.tone ?? 'normal')
+  const tone = opts.tone ?? 'normal'
+  const opener = toneOpener(tone)
   // Host-zone boundary: "today" here (and day()'s query window behind it) is
   // the HOST's local day — correct while the worker runs on the user's own
   // machine (launchd), where host zone == user zone. Moving the worker to a
@@ -117,7 +124,7 @@ export async function composeDayEmail(
   // servers are present in the new conversation, so read_day / apply_day_notes work.
   // (Claude Code users: `claude-cli://open?q=…`, app v2.1.91+. Deliverability caveat:
   // some webmail clients strip custom-scheme hrefs — productionise behind an https
-  // landing page that redirects to the scheme; see hosted-paid.notes.md.)
+  // landing page that redirects to the scheme; see docs/hosted-paid.notes.md.)
   const claudeLink = `claude://claude.ai/new?q=${encodeURIComponent(starter)}`
   // ChatGPT can't reach a local MCP at all, so this stays a reflect-only frame (the
   // user writes their own diary). Kept for cross-assistant reach.
@@ -126,8 +133,10 @@ export async function composeDayEmail(
   // The paste path is its own way in, not a fallback copy of the link prompt:
   // two questions (rotated by date — see dayQuestions) the user answers in their
   // OWN words, then pastes question + answer into any assistant to go deeper —
-  // or keeps in their diary as they are.
-  const [q1, q2] = dayQuestions(kind, today)
+  // or keeps in their diary as they are. The TONE must ride along: these questions
+  // sit three lines under the opener, so a welcome-back that then asks what went
+  // wrong is an accusation regardless of how the opener reads.
+  const [q1, q2] = dayQuestions(kind, today, tone)
   const pasteLead =
     'Or answer these yourself — then paste question and answer into any assistant to go deeper, or keep them in your diary:'
 
@@ -165,6 +174,64 @@ export async function composeDayEmail(
   ].join('\n')
 
   await deps.mailer(`joshua421 · ${when}`, body, html)
+}
+
+/**
+ * The welcome email — sent ONCE by `npm run setup`. It does double duty: it
+ * proves the mail pipe works (the setup smoke test), and it marks the moment
+ * setup is DONE by handing the user their first way in — the induction
+ * conversation that establishes their grounding. Both doors lead to Claude
+ * Desktop on purpose: setting up grounding *saves via the set_grounding tool*,
+ * which only a joshua421-connected assistant has — so the deep-link opens
+ * Desktop, and the paste block is its fallback (for mail clients that strip the
+ * custom-scheme link), not a "works anywhere" path. Deterministic; no model
+ * call, no calendar read.
+ */
+export async function sendWelcomeEmail(mailer: Deps['mailer']): Promise<void> {
+  const claudeLink = `claude://claude.ai/new?q=${encodeURIComponent(INDUCTION)}`
+  const rhythm = [
+    'A morning email helps you set the day before the Lord; an evening one helps you',
+    'look back and notice where God was in it. Each points you into a short conversation',
+    'with your own assistant — and what you choose to keep is written into your own',
+    'calendar. joshua421 stores none of it.',
+  ].join('\n')
+  const firstStep =
+    'First step — a short conversation to set up your preferences (what you hope God will grow in you, your tone, rhythm, church day):'
+  // The link opens a fresh Claude Desktop conversation; if you just connected
+  // joshua421, restart Desktop once so the tools are loaded before you begin.
+  const restartNote = '(If you just ran setup, restart Claude Desktop once first, so joshua421 is loaded.)'
+  const pasteLead = "If that link doesn't open, paste this into Claude Desktop (where joshua421 is connected):"
+
+  const body = [
+    "You're set up. From here, the rhythm is simple:",
+    '',
+    rhythm,
+    '',
+    firstStep,
+    `  Begin with Claude:  ${claudeLink}`,
+    `  ${restartNote}`,
+    '',
+    pasteLead,
+    '',
+    INDUCTION,
+    '',
+    LESS_OFTEN,
+  ].join('\n')
+
+  const html = [
+    '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5">',
+    "<p><strong>You're set up.</strong> From here, the rhythm is simple:</p>",
+    `<p>${htmlLines(rhythm)}</p>`,
+    `<p>${escapeHtml(firstStep)}<br>`,
+    `<a href="${claudeLink}">Begin with Claude&nbsp;→</a><br>`,
+    `<span style="color:#999;font-size:0.85em">${escapeHtml(restartNote)}</span></p>`,
+    `<p style="color:#666">${escapeHtml(pasteLead)}</p>`,
+    `<blockquote style="color:#666;border-left:3px solid #ddd;margin:0;padding-left:12px">${htmlLines(INDUCTION)}</blockquote>`,
+    `<p style="color:#999;font-size:0.85em">${escapeHtml(LESS_OFTEN)}</p>`,
+    '</div>',
+  ].join('\n')
+
+  await mailer("joshua421 · you're set up", body, html)
 }
 
 /**

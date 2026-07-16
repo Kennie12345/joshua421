@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Deps, Diary, DayEvent } from '../core/deps'
 import type { Log } from '../core/log'
 import type { Reflection } from '../core/reflection'
-import type { Journal, JournalEntry, JournalQuery, NewEntry } from '../core/journal'
+import type { Journal, JournalEntry, JournalQuery } from '../core/journal'
 
 /**
  * In-memory test doubles for the ports — no I/O, no network, no secrets. They
@@ -49,38 +49,23 @@ export function makeMemoryDiary(
   dayEvents: DayEvent[] = [],
 ): Diary & {
   readonly annotations: { eventId: string; note: string }[]
-  readonly summaries: { date: string; summary: string }[]
   readonly strips: string[]
-  readonly unwrites: string[]
 } {
   const annotations: { eventId: string; note: string }[] = []
-  const summaries: { date: string; summary: string }[] = []
   const strips: string[] = []
-  const unwrites: string[] = []
   return {
     annotations,
-    summaries,
     strips,
-    unwrites,
     async day() {
       return dayEvents
     },
     async annotate(eventId, note) {
       annotations.push({ eventId, note })
     },
-    async writeSummary(date, summary) {
-      summaries.push({ date, summary })
-    },
     async stripAnnotation(eventId) {
       strips.push(eventId)
       for (let i = annotations.length - 1; i >= 0; i--) {
         if (annotations[i].eventId === eventId) annotations.splice(i, 1)
-      }
-    },
-    async unwriteSummary(date) {
-      unwrites.push(date)
-      for (let i = summaries.length - 1; i >= 0; i--) {
-        if (summaries[i].date === date) summaries.splice(i, 1)
       }
     },
   }
@@ -93,14 +78,20 @@ export function makeMemoryJournal(): Journal & { readonly entries: JournalEntry[
     get entries() {
       return store
     },
-    async add(entry: NewEntry) {
-      const created: JournalEntry = { ...entry, id: randomUUID() }
+    async upsert(kind, period, entry) {
+      const existing = store.find((item) => item.kind === kind && item.period === period)
+      if (existing) {
+        Object.assign(existing, entry)
+        return existing
+      }
+      const created: JournalEntry = { ...entry, kind, period, id: randomUUID() }
       store.push(created)
       return created
     },
     async query(q: JournalQuery = {}) {
       const matched = store.filter((e) => {
         if (q.kind && e.kind !== q.kind) return false
+        if (q.period && e.period !== q.period) return false
         if (q.since && e.date < q.since) return false
         if (q.until && e.date > q.until) return false
         if (q.tags) {
@@ -109,10 +100,6 @@ export function makeMemoryJournal(): Journal & { readonly entries: JournalEntry[
         return true
       })
       return byDateDesc(matched)
-    },
-    async update(id, patch) {
-      const e = store.find((x) => x.id === id)
-      if (e) Object.assign(e, patch)
     },
     async delete(id) {
       const i = store.findIndex((x) => x.id === id)
@@ -128,6 +115,7 @@ export function makeDeps(overrides: Partial<Deps> = {}): Deps {
     diary: makeMemoryDiary(),
     grounding: { async get() { return null }, async set() {} },
     log: makeMemoryLog(),
+    journal: makeMemoryJournal(),
     clock: () => new Date('2026-07-01T09:00:00'),
     ...overrides,
   }

@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import type { Grounding } from './core/grounding'
+import type { Grounding } from '../core/grounding'
 
 /**
  * File-backed grounding — a plain markdown file of the user's preferences, which
