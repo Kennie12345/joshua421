@@ -21,11 +21,12 @@ it helps you reflect and set the day up for the Lord → with your **approval**
 it writes notes into your calendar → joshua421 records *that* you reflected,
 never *what* you said.
 
-Four promises: **behaviour, not content** (the log holds only
-dates/kinds/status; your grounding is the one opt-in exception) ·
-**additive** (never rewriting or deleting your words) · **permission at the
-boundary** (nothing written without your approval, in chat) · **grace, not
-guilt** (a memorial to God's faithfulness, not a scorecard).
+Four promises: **behaviour, not content** (a reflected day is one empty Marker
+entry in *your* calendar — joshua421 itself stores nothing at all; your
+grounding is the one piece of content kept, also in your calendar, by your
+choice) · **additive** (never rewriting or deleting your words) · **permission
+at the boundary** (nothing written without your approval, in chat) · **grace,
+not guilt** (a memorial to God's faithfulness, not a scorecard).
 
 joshua421 makes **no model calls of its own** — you bring whichever assistant
 you like, so no LLM key is needed. → [docs/design.md](./docs/design.md) has the
@@ -40,8 +41,11 @@ full vision and privacy model.
 - `npm run doctor` — re-check every pipe, read-only, any time something looks off.
 - `npm run worker:install` — run the daily nudges in the background (macOS
   launchd); `npm run worker` runs them in the foreground instead.
+- `npm run migrate` — one-time, for pre-cutover installs: moves the old local
+  log and grounding file into your calendar.
 
-Config lives in `.env` (see `.env.example`): your Google OAuth and local paths.
+Config lives in `.env` (see `.env.example`): your Google OAuth and calendar
+choices.
 
 ## How the repo is organised
 
@@ -49,10 +53,11 @@ Config lives in `.env` (see `.env.example`): your Google OAuth and local paths.
 src/
   core/         the pure engine — ports (Mailer · Diary · Log · Grounding ·
                 Journal), flows, cadence, persona; no I/O
-  adapters/     the impure edges — Google (calendar + Gmail send-only),
-                SQLite log, file-backed grounding
+  adapters/     the impure edges — Google (calendar + Gmail send-only), the
+                Journal-backed Log and Grounding (the calendar as database),
+                legacy SQLite/file adapters kept as migration sources
   setup/        the guided path — setup wizard, OAuth flow, .env writer,
-                worker installer, path helpers
+                one-time migration, worker installer, path helpers
   mcp.ts        entrypoint: the stdio MCP server your LLM calls
   worker.ts     entrypoint: the scheduled nudge emails
   prod-deps.ts  the one production wiring of ports → adapters
@@ -72,9 +77,12 @@ are the only places wiring happens. Tests live beside the file they test.
 
 ## Scope
 
-**Dogfood first** — me, my own tokens, no account system. Onboarding others
-(their token custody, minimal scopes, hosting) is a deliberate, later step —
-see [docs/status.md](./docs/status.md) for where the build is.
+**Dogfood first** — me, my own tokens, no account system. Self-hosting is open
+to anyone today: `npm run setup` has every user bring their **own** free Google
+OAuth client and hold their own tokens, so no one — this project included —
+ever holds them. A *hosted* service (us holding tokens: custody, minimal
+scopes, verification) is a deliberate, later step — see
+[docs/status.md](./docs/status.md) for where the build is.
 
 ## License & use
 

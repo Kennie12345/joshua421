@@ -64,9 +64,10 @@ you to your LLM to do the actual shaping.
 
 ## Grounding
 
-A local, user-owned capture (editable by hand) of goals, language, tone, rhythm,
-church day/time. It grounds both the diary entries and the conversation — the
-**one** piece of content joshua421 stores, by your explicit choice, because
+A user-owned capture of goals, language, tone, rhythm, church day/time — one
+entry in your own calendar, still editable by hand (the entry's description
+*is* the document). It grounds both the diary entries and the conversation —
+the **one** piece of content joshua421 keeps, by your explicit choice, because
 grounding requires memory.
 
 ## Promises (invariants)
@@ -90,8 +91,10 @@ grounding requires memory.
 - A pure `core/` engine behind ports: **Mailer, Diary, Log, Grounding, Journal**.
 - Two entrypoints: `mcp.ts` (interactive — your LLM calls the tools) and
   `worker.ts` (scheduled — the emails).
-- Adapters: **Google Workspace** (calendar read/write, Gmail send-only), a
-  **SQLite** log, **file-backed** grounding.
+- Adapters: **Google Workspace** (calendar read/write, Gmail send-only); the
+  Log and the Grounding are **Journal-backed** — uses of the calendar-as-database
+  seam, not stores of their own. (The legacy SQLite/file adapters remain only as
+  `npm run migrate` sources.)
 - **OAuth scopes**, minimal and disclosed: `calendar.events`, `gmail.send`
   (send — never *read* — mail), and identity-only `openid`/`email`, which grants
   no data access and only lets the token report which account authorised it.
@@ -114,10 +117,10 @@ at whatever they run; no vendor SDK baked in.
 
 ## The calendar as the database
 
-**The user's calendar can be the database.** It already holds the day; it can
-hold everything joshua421 needs — the day summaries, the behavioural record (a
-Marker per reflected day), even the grounding (one dedicated entry the user can
-edit by hand). Why it's compelling:
+**The user's calendar IS the database** (cut over — see status.md). It already
+holds the day; it holds everything joshua421 needs — the day summaries, the
+behavioural record (a Marker per reflected day), even the grounding (one
+dedicated entry the user can edit by hand). Why it's compelling:
 
 - **Total data ownership** — "we never store your content" becomes "we store
   nothing at all."
@@ -129,8 +132,9 @@ The tradeoffs — calendars are poor at structured data, and there are rate
 limits — are accepted, not regretted (see ADR 0003: the calendar is the
 *subject*, not the store). A little state is encoded in `extendedProperties`
 (filterable via `privateExtendedProperty`), and time-range queries do the rest.
-When adopted, this replaces the SQLite `Log` and file-backed grounding behind
-the *same* ports — only the adapters change.
+The cutover replaced the SQLite `Log` and file-backed grounding behind the
+*same* ports — only the adapters changed; `npm run migrate` carries a
+pre-cutover machine across once.
 
 ### Rollups (consuming it over time)
 

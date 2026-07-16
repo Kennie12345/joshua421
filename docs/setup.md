@@ -143,8 +143,10 @@ launchd (or the daemon) owns only the *time* of day; your grounding owns the res
 
 ## A dedicated calendar (optional)
 
-By default, day summaries land on your **primary** calendar. To keep joshua421's
-own artifacts tidy and hideable, make a dedicated calendar instead:
+Everything joshua421 keeps — day summaries, Markers (reflected days), rollups,
+side entries, your preferences — lands on your **primary** calendar by default.
+To keep joshua421's artifacts tidy and hideable, make a dedicated calendar
+instead:
 
 1. Google Calendar → left sidebar → **+ next to "Other calendars" → Create new
    calendar** → name it `joshua421` → Create.
@@ -154,6 +156,26 @@ own artifacts tidy and hideable, make a dedicated calendar instead:
    run `npm run doctor` to confirm it's reachable.
 
 Either way it's *your* calendar — joshua421 stores nothing of its own.
+
+---
+
+## Coming from an earlier install? (`npm run migrate`)
+
+Before the calendar-as-database cutover, joshua421 kept a local behaviour log
+(`joshua421.sqlite`) and a local grounding file (`grounding.md`). One command
+moves them into your calendar:
+
+```sh
+npm run migrate
+```
+
+Every reflected day becomes a Marker entry; your grounding becomes the one
+preferences entry. It's **safe to re-run** (entries upsert against their day),
+and it will **never overwrite** preferences you've since saved through the
+conversation — the calendar's copy is the living one. The local files are left
+in place as your own backup; delete them whenever you trust the calendar.
+`npm run setup` offers this automatically when it finds pre-cutover data, and
+`npm run doctor` points at it while anything hasn't crossed.
 
 ---
 
@@ -168,7 +190,7 @@ no sends) and points at the fix. Common cases:
 | `invalid_grant` | Expired or revoked token | Same as above |
 | `GOOGLE_* missing` | `.env` not filled | `npm run setup` |
 | Tools absent in Claude Desktop | Config not loaded | Restart Claude Desktop; confirm the launcher path exists |
-| `SQLITE_CANTOPEN` | Bad `JOSHUA421_DB` path | Check the path in `.env`; it must be absolute or repo-relative |
+| Nudges ignore my rhythm after updating | Pre-cutover data not migrated | `npm run migrate` (see above) |
 
 To re-authorise at any time (new token, same client): `npm run auth`. To start
 over, delete `.env` and run `npm run setup` again.
@@ -186,8 +208,7 @@ So nothing is a black box:
   saved alongside as `.backup`.
 - **A welcome email** — to yourself, if you said yes; it carries your first
   conversation.
-- **`joshua421.sqlite`** — the behaviour-only log (dates/kinds/status; never your
-  words), opened to prove it works.
 
-Your reflections and notes never touch any of this — they live in *your*
-calendar. See [design.md](./design.md) for the privacy model in full.
+Nothing else lives on this machine: your reflections, notes, Markers, rollups
+and preferences all live in *your* calendar. See [design.md](./design.md) for
+the privacy model in full.
