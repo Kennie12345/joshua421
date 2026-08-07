@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>joshua421 · opening Claude</title>
+<!--
+  The email's Claude door.
+
+  Gmail's sanitiser drops the href of any anchor whose scheme isn't http(s), so a
+  `claude://` link mailed straight to the user arrives as dead text and the
+  joshua421 tools are never reached. This page is the https front for that link:
+  it reads the prompt and hands it to Claude Desktop.
+
+  Two rules this page must keep:
+
+  1. The prompt rides in the FRAGMENT (#q=…), which browsers never put on the
+     wire. The host of this page sees a bare GET and nothing else — the day's
+     calendar titles never leave the machine. Never move it to a query string.
+  2. Nothing is loaded from, or sent to, the network. No fonts, no analytics, no
+     fetch. Everything below is inline on purpose. Keep it that way.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.55;
+    max-width: 38rem;
+    margin: 0 auto;
+    padding: 3rem 1.25rem;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 .5rem; font-weight: 600; }
+  p { margin: 0 0 1rem; }
+  .muted { opacity: .7; font-size: .9rem; }
+  textarea {
+    width: 100%;
+    min-height: 9rem;
+    font: inherit;
+    font-size: .9rem;
+    padding: .6rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(128, 128, 128, .45);
+    background: transparent;
+    color: inherit;
+    resize: vertical;
+  }
+  button, .btn {
+    font: inherit;
+    padding: .45rem .9rem;
+    border-radius: .4rem;
+    border: 1px solid rgba(128, 128, 128, .45);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<h1>Opening Claude…</h1>
+
+<p id="lede" class="muted">
+  Your browser may ask for permission to open Claude. If nothing happens, use the
+  prompt below.
+</p>
+
+<p id="empty" class="muted" hidden>
+  This page is the link inside a joshua421 email — open it from there, and it
+  hands your day to Claude. On its own there is nothing to carry.
+  <a href="https://github.com/Kennie12345/joshua421">What joshua421 is →</a>
+</p>
+
+<div id="fallback" hidden>
+  <div class="row">
+    <a class="btn" id="again" href="#">Open Claude Desktop</a>
+    <button type="button" id="copy">Copy the prompt</button>
+  </div>
+  <p class="muted">Or paste this into Claude yourself:</p>
+  <textarea id="prompt" readonly></textarea>
+</div>
+
+<noscript>
+  <p>
+    This page needs JavaScript to hand your prompt to Claude. Without it, open
+    Claude Desktop and describe your day yourself — the joshua421 tools are
+    already there.
+  </p>
+</noscript>
+
+<script>
+(function () {
+  var lede = document.getElementById('lede')
+  var empty = document.getElementById('empty')
+  var fallback = document.getElementById('fallback')
+
+  // #q=<encoded>. Read from the fragment only — never location.search.
+  var hash = location.hash.replace(/^#/, '')
+  var starter = ''
+  try {
+    var params = new URLSearchParams(hash)
+    starter = params.get('q') || ''
+  } catch (e) {
+    starter = ''
+  }
+
+  if (!starter) {
+    lede.hidden = true
+    empty.hidden = false
+    return
+  }
+
+  // Rebuild the target rather than string-splicing it: Claude Desktop routes
+  // host `claude.ai` + path `/new` and allows exactly one query param, `q`.
+  var target = new URL('claude://claude.ai/new')
+  target.searchParams.set('q', starter)
+  var href = target.toString()
+
+  document.getElementById('prompt').value = starter
+  document.getElementById('again').href = href
+  fallback.hidden = false
+
+  document.getElementById('copy').addEventListener('click', function () {
+    var box = document.getElementById('prompt')
+    box.select()
+    var done = function () { this.textContent = 'Copied' }.bind(this)
+    if (navigator.clipboard) navigator.clipboard.writeText(starter).then(done, function () {})
+    else { try { document.execCommand('copy'); done() } catch (e) {} }
+  })
+
+  // replace(), not assign(): the bounce leaves no entry in history, so Back from
+  // Claude returns to the email rather than re-triggering this page.
+  location.replace(href)
+})()
+</script>
+
+</body>
+</html>

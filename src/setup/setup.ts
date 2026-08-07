@@ -1,6 +1,8 @@
 import '../env'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -123,6 +125,59 @@ async function desktopConfigState(): Promise<'has' | 'missing-server' | 'absent'
   }
 }
 
+const execFileAsync = promisify(execFile)
+const CLAUDE_PROBE_OPTIONS = {
+  // Probe outside this repo so its project-scoped .mcp.json cannot mask whether
+  // the user-scoped server (the thing setup offers to add) exists.
+  cwd: homedir(),
+  timeout: 10_000,
+  killSignal: 'SIGKILL' as const,
+  maxBuffer: 1024 * 1024,
+}
+
+type ClaudeCodeState = 'has' | 'missing' | 'no-cli'
+
+/** Keep CLI absence distinct from a real CLI returning "not configured". */
+export function classifyClaudeCodeProbe(stdout: string, errorCode?: string): ClaudeCodeState {
+  if (/(^|\n)\s*joshua421\b/.test(stdout)) return 'has'
+  return errorCode === 'ENOENT' ? 'no-cli' : 'missing'
+}
+
+/**
+ * What Claude Code knows: 'has' joshua421, 'missing' it, or 'no-cli' — the
+ * `claude` command isn't installed, which is not a problem, just nothing to
+ * wire. Claude Code is the SECOND door, and optional: this repo
+ * ships a project-scoped .mcp.json that covers sessions started here, and the
+ * offer below covers every other project.
+ */
+async function claudeCodeState(): Promise<ClaudeCodeState> {
+  try {
+    // `get` is target-specific and does no health checks. `list` can spend tens
+    // of seconds checking unrelated servers, and older versions may exit nonzero
+    // when any one of them is unhealthy.
+    const { stdout } = await execFileAsync('claude', ['mcp', 'get', 'joshua421'], CLAUDE_PROBE_OPTIONS)
+    return classifyClaudeCodeProbe(stdout)
+  } catch (err) {
+    const failure = err as { stdout?: unknown; code?: unknown }
+    return classifyClaudeCodeProbe(String(failure.stdout ?? ''), String(failure.code ?? ''))
+  }
+}
+
+/**
+ * Add joshua421 to Claude Code — user scope, so the tools are there in EVERY
+ * project, the way Claude Desktop's config is global. (Project scope is already
+ * covered inside this repo by the committed .mcp.json.) The absolute wrapper
+ * path is right here: this writes a machine-local config, never a shared file.
+ */
+async function addToClaudeCode(): Promise<void> {
+  await execFileAsync('claude', ['mcp', 'add', '--scope', 'user', 'joshua421', '--', wrapperPath], {
+    cwd: repoRoot,
+    timeout: 10_000,
+    killSignal: 'SIGKILL',
+    maxBuffer: 1024 * 1024,
+  })
+}
+
 /**
  * Add joshua421 to Claude Desktop's config. Always backs the file up FIRST, so
  * even an unparseable config is never lost. If the existing JSON is broken we
@@ -227,6 +282,14 @@ async function doctor(): Promise<never> {
     bad(`joshua421 not in ${desktopConfigPath} — run \`npm run setup\`, or connect another MCP client per docs/setup.md`)
     failures++
   }
+
+  // Claude Code is the second door and optional — a note, never a failure. (Inside
+  // this repo the committed .mcp.json covers it; user scope covers everywhere else.)
+  const code = await claudeCodeState()
+  if (code === 'has') ok('Claude Code has joshua421')
+  else if (code === 'missing') {
+    note('joshua421 not in Claude Code user scope — `npm run setup` offers to add it (optional)')
+  } else note('Claude Code CLI not found — project .mcp.json will apply when Claude Code is installed (optional)')
 
   if (process.platform === 'darwin') {
     const agents = existsSync(agentPlist('morning')) && existsSync(agentPlist('evening'))
@@ -442,10 +505,25 @@ async function setup(): Promise<void> {
       }
     }
   }
+  const code = await claudeCodeState()
+  if (code === 'has') {
+    ok('Claude Code already has joshua421')
+  } else if (code === 'missing') {
+    if (await confirm('  Add joshua421 to Claude Code too (available in every project)?', false)) {
+      try {
+        await addToClaudeCode()
+        ok('Claude Code updated — the tools are there in your next session')
+      } catch (err) {
+        bad(`couldn't add it to Claude Code — ${err instanceof Error ? err.message : err}`)
+        say(`    do it by hand: claude mcp add --scope user joshua421 -- ${wrapperPath}`)
+      }
+    }
+  } else {
+    note('Claude Code CLI not found — skipping (Claude Desktop is the main door)')
+  }
+
   say('\n  Any other MCP client — the server is just this command (stdio):')
   say(`    ${wrapperPath}`)
-  say('  Claude Code:')
-  say(`    claude mcp add joshua421 -- ${wrapperPath}`)
 
   // 8 · the welcome email — the "you're in" marker and the first way in. Offered
   // only on a first run (never re-sent on a plain rerun), and never sent without

@@ -206,6 +206,34 @@ function toneOpener(tone: CadenceTone): string | null {
 // through the conversation: the assistant edits the rhythm via set_grounding.
 const LESS_OFTEN = 'Fewer of these? Ask your assistant to adjust your rhythm.'
 
+// Where the email's Claude door points. Gmail's sanitiser DROPS the href of any
+// anchor whose scheme isn't http(s) — a `claude://` link arrives as dead text,
+// so the tools are never reached and the reflection is silently never written.
+// The fix is an https page that bounces to the scheme; see claudeDoor below.
+// Set JOSHUA421_LINK_BASE='' to opt out and emit the raw scheme link instead.
+const DEFAULT_LINK_BASE = 'https://kennie12345.github.io/joshua421/go/'
+
+/**
+ * The one Claude door — the link that opens a conversation with the joshua421
+ * tools present. Used by BOTH emails, so the door has a single definition.
+ *
+ * It must open the user's LOCAL Claude Desktop, not claude.ai in a browser: the
+ * MCP is a local stdio server the web app can't see, so an `https://claude.ai`
+ * link would let them reflect while the diary is never written. Claude Desktop
+ * takes `claude://claude.ai/new?q=…` (host + path routed, `q` its only allowed
+ * query param) — but Gmail won't carry that link at all, so we front it with an
+ * https page that redirects.
+ *
+ * The prompt rides in the FRAGMENT, not the query: fragments are never sent to
+ * the server, so the day's calendar titles stay in the browser and the host of
+ * the bounce page sees nothing but a bare page request.
+ */
+function claudeDoor(starter: string): string {
+  const base = process.env.JOSHUA421_LINK_BASE ?? DEFAULT_LINK_BASE
+  const q = encodeURIComponent(starter)
+  return base ? `${base}#q=${q}` : `claude://claude.ai/new?q=${q}`
+}
+
 /**
  * A gentle cut for reading a kept summary back: whole words, an honest ellipsis.
  * Their words are read back, never rewritten — so a long one is trimmed, not
@@ -262,15 +290,7 @@ export async function composeDayEmail(
   // of the URL — the assistant reads it live via read_day; a reflection in a URL
   // leaks to browser history and logs.)
   const starter = [`My day (${today}):`, dayList, '', companionFrame(kind, { church })].join('\n')
-  // Open the user's LOCAL Claude Desktop, NOT claude.ai in a browser — the joshua421
-  // MCP is a local stdio server, and the web app can't see it, so a `https://claude.ai`
-  // link would let them reflect while the diary is *silently never written*. The
-  // `claude://` scheme hands off to Claude Desktop, whose globally-configured MCP
-  // servers are present in the new conversation, so read_day / apply_day_notes work.
-  // (Claude Code users: `claude-cli://open?q=…`, app v2.1.91+. Deliverability caveat:
-  // some webmail clients strip custom-scheme hrefs — productionise behind an https
-  // landing page that redirects to the scheme; see docs/hosted-paid.notes.md.)
-  const claudeLink = `claude://claude.ai/new?q=${encodeURIComponent(starter)}`
+  const claudeLink = claudeDoor(starter)
   // ChatGPT can't reach a local MCP at all, so this stays a reflect-only frame (the
   // user writes their own diary). Kept for cross-assistant reach.
   const chatgptLink = `https://chatgpt.com/?q=${encodeURIComponent(starter)}`
@@ -310,9 +330,9 @@ export async function composeDayEmail(
     LESS_OFTEN,
   ].join('\n')
 
-  // HTML twin: the links ride behind anchor text so the URL-encoded ?q= prompts
-  // stay hidden. hrefs are safe unescaped: encodeURIComponent has already
-  // percent-encoded &, <, > out of the query.
+  // HTML twin: the links ride behind anchor text so the URL-encoded prompts stay
+  // hidden. hrefs are safe unescaped: encodeURIComponent has already
+  // percent-encoded &, <, > out of the query (and the fragment).
   const html = [
     '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.5">',
     ...(opener ? [`<p>${escapeHtml(opener)}</p>`] : []),
@@ -347,7 +367,7 @@ export async function composeDayEmail(
  * call, no calendar read.
  */
 export async function sendWelcomeEmail(mailer: Deps['mailer']): Promise<void> {
-  const claudeLink = `claude://claude.ai/new?q=${encodeURIComponent(INDUCTION)}`
+  const claudeLink = claudeDoor(INDUCTION)
   const rhythm = [
     'A morning email helps you set the day before the Lord; an evening one helps you',
     'look back and notice where God was in it. Each points you into a short conversation',

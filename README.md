@@ -45,7 +45,9 @@ full vision and privacy model.
   log and grounding file into your calendar.
 
 Config lives in `.env` (see `.env.example`): your Google OAuth and calendar
-choices.
+choices, and `JOSHUA421_LINK_BASE` — the https page the email's Claude link goes
+through (Gmail refuses to carry a raw `claude://` link; docs/setup.md → "Why the
+link goes via a web page").
 
 ## How the repo is organised
 
@@ -69,6 +71,9 @@ docs/
   setup.md      click-by-click setup, troubleshooting
   glossary.md   the fixed vocabulary (Diary, Journal, Grounding, Marker, …)
   adr/          decision records — the "why" that must not be re-litigated
+  go/           the email's Claude door: an https page that bounces to the
+                claude:// scheme, because Gmail deletes non-http hrefs
+.mcp.json       connects joshua421 to Claude Code sessions started in this repo
 ```
 
 The shape follows the design: everything in `core/` is pure and talks only to

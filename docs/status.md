@@ -27,10 +27,12 @@ The vision is [design.md](./design.md); this page tracks the build against it.
   per-user store to ever host: "we store nothing at all." `npm run migrate`
   moves a pre-cutover machine across once (idempotent; never clobbers
   preferences already saved through the conversation).
-- **Worker** — two daily nudge emails with two ways in: deep links (a
-  `claude://` link into Claude Desktop, where the MCP is present to write the
+- **Worker** — two daily nudge emails with two ways in: deep links (an https
+  page that bounces into Claude Desktop, where the MCP is present to write the
   diary, plus a ChatGPT reflect-only link) and a paste path of two date-rotated
-  questions. HTML twin included; event times render in the calendar's own
+  questions. The bounce exists because Gmail deletes the href of a raw
+  `claude://` anchor; the prompt rides in the fragment, so the page's host never
+  sees the day (`docs/go/`, `JOSHUA421_LINK_BASE`). HTML twin included; event times render in the calendar's own
   wall-clock, never bare UTC. The **morning email reads back yesterday's kept
   summary** — their own words, the memorial felt daily.
 - **Cadence that breathes** (`core/cadence.ts`) — nudges follow the person, not

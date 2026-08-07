@@ -91,8 +91,9 @@ now and run `npm run auth` to mint a fresh token.
 
 The wizard writes a small launcher at `bin/joshua421-mcp` (absolute paths, so it
 runs no matter what working directory your assistant spawns it in) and offers to
-wire it into Claude Desktop for you, backing up your config first. If you accept,
-just **restart Claude Desktop**.
+wire it into **Claude Desktop** — backing up your config first — and, if you have
+the CLI, into **Claude Code**. If you accept the Desktop one, just **restart
+Claude Desktop**.
 
 To connect something else, the server *is* that one command over stdio:
 
@@ -105,10 +106,12 @@ To connect something else, the server *is* that one command over stdio:
     }
   }
   ```
-- **Claude Code**:
+- **Claude Code** (manual) — user scope, so the tools are there in every project:
   ```sh
-  claude mcp add joshua421 -- /absolute/path/to/joshua421/bin/joshua421-mcp
+  claude mcp add --scope user joshua421 -- /absolute/path/to/joshua421/bin/joshua421-mcp
   ```
+  Inside this repo you need none of that: a committed `.mcp.json` connects
+  joshua421 to any Claude Code session started here.
 
 Once connected, just start talking — on a first visit (no preferences saved yet)
 the companion notices and gently offers to set them up. You can also run the
@@ -138,6 +141,29 @@ The nudge decides *whether* and *how gently* to speak from your rhythm and your
 silence — a rest day sends nothing, a long gap gets a gentler welcome, never a
 scolding. That's `core/cadence.ts`; nothing to configure beyond your grounding.
 launchd (or the daemon) owns only the *time* of day; your grounding owns the rest.
+
+### Why the link goes via a web page
+
+Each email's Claude link has to open your **local** Claude Desktop, because that
+is where the joshua421 tools live — reflecting in claude.ai on the web would be a
+conversation nothing could ever write down. The link that does that is
+`claude://claude.ai/new?q=…`, a custom URL scheme.
+
+Gmail refuses to carry it. Its sanitiser **deletes the `href`** of any link whose
+scheme isn't `http`/`https`, so the anchor arrives as dead text — clicking does
+nothing. (Apple Mail is fine with it.)
+
+So the email links to a plain https page that redirects to the scheme:
+`docs/go/index.html`, served for this project at
+`https://kennie12345.github.io/joshua421/go/`. The prompt travels in the URL's
+**fragment** (`#q=…`), which browsers never send to a server — so whoever hosts
+that page sees a bare page request and never your day. The page loads nothing
+from the network, and always shows the prompt for copying in case the handoff
+doesn't take.
+
+`JOSHUA421_LINK_BASE` in `.env` controls it: point it at your own copy of
+`docs/go/` if you'd rather not route through ours, or set it **empty** to mail the
+raw `claude://` link (good in Apple Mail, dead in Gmail).
 
 ---
 
@@ -190,6 +216,8 @@ no sends) and points at the fix. Common cases:
 | `invalid_grant` | Expired or revoked token | Same as above |
 | `GOOGLE_* missing` | `.env` not filled | `npm run setup` |
 | Tools absent in Claude Desktop | Config not loaded | Restart Claude Desktop; confirm the launcher path exists |
+| Tools absent in Claude Code | Never wired (Desktop and Code are separate) | `claude mcp list` to check; `npm run setup` offers to add it |
+| The email's Claude link does nothing | See "Why the link goes via a web page" below | Set `JOSHUA421_LINK_BASE` to a page you host, or use the paste block |
 | Nudges ignore my rhythm after updating | Pre-cutover data not migrated | `npm run migrate` (see above) |
 
 To re-authorise at any time (new token, same client): `npm run auth`. To start
@@ -206,6 +234,8 @@ So nothing is a black box:
 - **`bin/joshua421-mcp`** — the generated launcher. Machine-specific; gitignored.
 - **`claude_desktop_config.json`** — only if you said yes; the previous version is
   saved alongside as `.backup`.
+- **Claude Code's user config** — only if you said yes; the wizard runs
+  `claude mcp add --scope user joshua421`. Undo with `claude mcp remove --scope user joshua421`.
 - **A welcome email** — to yourself, if you said yes; it carries your first
   conversation.
 

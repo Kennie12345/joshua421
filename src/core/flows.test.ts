@@ -201,6 +201,72 @@ test('the deep-link prompt is context plus a one-sentence ask; the paste path is
   assert.ok(htmlSent[0].includes(q1) && htmlSent[0].includes(q2), 'both paste questions ride in the HTML twin')
 })
 
+/**
+ * The Claude door has to SURVIVE the mail client, or the whole loop is silent:
+ * Gmail deletes the href of any anchor whose scheme isn't http(s), so a raw
+ * `claude://` link reaches the inbox as dead text and the tools are never
+ * reached. The door is https, and the prompt rides in the fragment — never the
+ * query — so the bounce page's host is never told what the day holds.
+ */
+test('the Claude door is an https link that keeps the day out of the query string', async () => {
+  const sent: { body: string; html: string }[] = []
+  const deps = makeDeps({
+    diary: makeMemoryDiary([
+      {
+        id: 'e1',
+        title: 'Erko dental filling — 100% + C++ & café ☕',
+        start: new Date('2026-07-07T01:45:00.000Z'),
+        startLocal: '2026-07-07T11:45:00+10:00',
+        shared: false,
+      },
+    ]),
+    mailer: async (_subject, body, html) => {
+      sent.push({ body, html: html ?? '' })
+    },
+    clock: () => new Date('2026-07-07T20:00:00'),
+  })
+
+  await composeDayEmail('evening', deps)
+  const href = sent[0].html.match(/<a href="([^"]+)">Reflect with Claude/)![1]
+  const url = new URL(href)
+
+  assert.equal(url.protocol, 'https:', 'Gmail strips non-http(s) hrefs — the door must be https')
+  assert.equal(url.search, '', 'the prompt must never ride in the query string (servers log it)')
+
+  const starter = new URLSearchParams(url.hash.slice(1)).get('q')!
+  assert.ok(starter.includes('My day (2026-07-07):'), 'the fragment carries the day')
+  assert.ok(
+    starter.includes('Erko dental filling — 100% + C++ & café ☕'),
+    "the fragment losslessly carries the day's events",
+  )
+  assert.ok(sent[0].body.includes(href), 'the plain-text twin carries the same door')
+
+  // This is the bounce page's exact reconstruction algorithm. URLSearchParams
+  // serialises spaces as `+`; Desktop reads them back with searchParams.get(),
+  // which reverses that form encoding without changing literal +/%/Unicode.
+  const desktopTarget = new URL('claude://claude.ai/new')
+  desktopTarget.searchParams.set('q', starter)
+  assert.ok(desktopTarget.search.includes('+'), 'URLSearchParams uses + for at least one space')
+  assert.equal(new URL(desktopTarget).searchParams.get('q'), starter, 'Desktop receives the exact starter')
+  assert.deepEqual([...desktopTarget.searchParams.keys()], ['q'], 'Desktop receives only its allowlisted q param')
+})
+
+test('an empty JOSHUA421_LINK_BASE opts back into the raw claude:// scheme', async () => {
+  const before = process.env.JOSHUA421_LINK_BASE
+  process.env.JOSHUA421_LINK_BASE = ''
+  try {
+    const sent: string[] = []
+    await sendWelcomeEmail(async (_s, body) => void sent.push(body))
+    assert.ok(
+      sent[0].includes('claude://claude.ai/new?q='),
+      'opting out mails the scheme link direct (works in Apple Mail, not Gmail)',
+    )
+  } finally {
+    if (before === undefined) delete process.env.JOSHUA421_LINK_BASE
+    else process.env.JOSHUA421_LINK_BASE = before
+  }
+})
+
 test('paste questions rotate with the date and never pair a question with itself', () => {
   for (const kind of ['morning', 'evening'] as const) {
     const pairs = new Set<string>()
@@ -243,14 +309,17 @@ test('the welcome email carries the induction through both doors — deep-link a
   assert.equal(sent.length, 1)
   const { body, html } = sent[0]
 
-  // Door one: the Claude Desktop deep-link (where the MCP tools are present)
-  // carries the induction as the conversation starter.
-  const link = body.match(/claude:\/\/\S+/)?.[0]
+  // Door one: the link into Claude Desktop (where the MCP tools are present)
+  // carries the induction as the conversation starter. It is an https bounce,
+  // not the raw scheme — Gmail deletes a `claude://` href outright.
+  const link = body.match(/Begin with Claude:\s*(\S+)/)?.[1]
   assert.ok(link, 'the deep-link rides the plain body')
-  assert.ok(
-    decodeURIComponent(link!).includes('getting started with joshua421'),
-    'the deep-link starts the induction conversation',
-  )
+  const door = new URL(link!)
+  assert.equal(door.protocol, 'https:', 'the door must survive Gmail — https, not claude://')
+  assert.equal(door.search, '', 'the induction also stays out of the bounce host query')
+  assert.equal(new URLSearchParams(door.hash.slice(1)).get('q'), INDUCTION)
+  const htmlLink = html.match(/<a href="([^"]+)">Begin with Claude/)?.[1]
+  assert.equal(htmlLink, link, 'the welcome HTML and plain-text twins carry the same private door')
 
   // Door two: the induction itself, verbatim, to paste into ANY assistant —
   // in the plain body and the HTML twin (the surface clients actually render).
