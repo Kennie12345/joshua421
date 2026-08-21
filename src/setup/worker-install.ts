@@ -47,7 +47,15 @@ const AGENTS: Agent[] = [
 const label = (job: string) => `com.joshua421.${job}`
 const plistPath = (job: string) => join(agentsDir, `${label(job)}.plist`)
 
-/** A launchd plist: run `node tsx worker.ts <job>` at a fixed hour each day. */
+/**
+ * A launchd plist: run `node tsx worker.ts <job>` at a fixed hour each day.
+ *
+ * stdout goes to /dev/null on purpose: the worker appends its own outcome line to
+ * `logs/<job>.log`, so that record exists whether the job was started by launchd
+ * or by hand. Redirecting stdout here as well would double every line. stderr
+ * still lands in the same file, to catch anything that dies before the worker's
+ * own handler can write.
+ */
 export function plistXml(a: Agent, node: string, tsxCli: string): string {
   const args = [node, tsxCli, workerTs, a.job]
   const argXml = args.map((x) => `    <string>${xmlEscape(x)}</string>`).join('\n')
@@ -63,7 +71,7 @@ ${argXml}
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>${a.hour}</integer><key>Minute</key><integer>0</integer></dict>
   <key>RunAtLoad</key><false/>
-  <key>StandardOutPath</key><string>${xmlEscape(join(logsDir, `${a.job}.log`))}</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>${xmlEscape(join(logsDir, `${a.job}.log`))}</string>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string></dict>

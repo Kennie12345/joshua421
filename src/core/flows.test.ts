@@ -188,11 +188,21 @@ test('the deep-link prompt is context plus a one-sentence ask; the paste path is
   await composeDayEmail('evening', deps)
   const body = sent[0]
 
-  // The link prompt stays lean: the day (context) + one sentence — no persona essay.
-  const q = decodeURIComponent(body.match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
-  assert.ok(q.includes('My day (2026-07-07):'), 'the prompt carries the day as context')
-  assert.ok(q.includes('one brief question at a time'), 'the prompt asks for questions, briefly')
-  assert.ok(q.length < 350, `the prompt must stay simple — got ${q.length} chars`)
+  // The CLAUDE door carries the day as context. It rides in the FRAGMENT (#q=),
+  // which browsers never put on the wire, so the bounce page's host sees nothing.
+  const claudeQ = decodeURIComponent(body.match(/#q=(\S+)/)![1])
+  assert.ok(claudeQ.includes('My day (2026-07-07):'), 'the Claude prompt carries the day as context')
+  assert.ok(claudeQ.includes('one brief question at a time'), 'the prompt asks for questions, briefly')
+  assert.ok(claudeQ.length < 350, `the prompt must stay simple — got ${claudeQ.length} chars`)
+
+  // The CHATGPT door must NOT. chatgpt.com reads `?q=` — a QUERY string, which is
+  // sent to the server and written to browser history. So it gets the frame alone;
+  // the day's event titles never leave the machine by that route. This assertion is
+  // the guard: it failed for real, on a link that shipped the calendar in the query.
+  const chatgptQ = decodeURIComponent(body.match(/https:\/\/chatgpt\.com\/\?q=(\S+)/)![1])
+  assert.ok(!chatgptQ.includes('My day'), 'the ChatGPT query string must not carry the day')
+  assert.ok(!chatgptQ.includes('Team standup'), 'nor any event title from it')
+  assert.ok(chatgptQ.includes('one brief question at a time'), 'but it still carries the frame')
 
   // The paste path carries answerable questions, verbatim — in BOTH the plain body
   // and the HTML twin (the surface most email clients actually render).
@@ -581,4 +591,99 @@ test('sendDailyNudge on a fresh start sends normally, with no guilt opener but t
     'a present new user gets no welcome-back / light line',
   )
   assert.ok(sent[0].includes('Fewer of these?'), 'the honest less-often line is always offered')
+})
+
+// ── the secure base: presence holds, the ask scales (ADR 0007) ───────────────
+
+/** Send one nudge and hand back the plain body + HTML twin. */
+async function nudge(grounding: string | null, reflections: Reflection[], now = '2026-07-15T07:00:00') {
+  const sent: string[] = []
+  const htmlSent: string[] = []
+  const deps = makeDeps({
+    diary: makeMemoryDiary([
+      {
+        id: 'e1',
+        title: 'Team standup',
+        start: new Date('2026-07-14T23:00:00.000Z'),
+        startLocal: '2026-07-15T09:00:00+10:00',
+        shared: false,
+      },
+    ]),
+    grounding: groundingOf(grounding),
+    log: { ...makeMemoryLog(), async reflections() { return reflections } },
+    mailer: async (_s, body, html) => { sent.push(body); htmlSent.push(html ?? '') },
+    clock: () => new Date(now),
+  })
+  const result = await sendDailyNudge('morning', deps)
+  return { ...result, body: sent[0] ?? '', html: htmlSent[0] ?? '' }
+}
+
+const AWAY_11_DAYS = [reflectedOn('2026-07-04')]
+const AWAY_30_DAYS = [reflectedOn('2026-06-15')]
+
+/**
+ * THE REGRESSION. Eleven days of silence used to mean no email at all, forever —
+ * and the only exit was the reflection the missing email was meant to prompt.
+ * Five weeks of real use produced 74 scheduled jobs and 4 sent emails.
+ */
+test('nudge: eleven days away still gets today’s email — presence is never what silence takes', async () => {
+  const { sent, body } = await nudge('Rhythm: daily', AWAY_11_DAYS)
+  assert.equal(sent, true, 'the email must arrive')
+  assert.ok(body.includes('Team standup'), 'and it is still about their actual day')
+})
+
+test('nudge: the welcome-back never counts the days or names the gap as a lapse', async () => {
+  const { body } = await nudge('Rhythm: daily', AWAY_30_DAYS)
+  for (const forbidden of ['11 days', '30 days', 'streak', 'back on track', 'missed', 'you have not']) {
+    assert.ok(!body.toLowerCase().includes(forbidden.toLowerCase()), `must not say "${forbidden}"`)
+  }
+})
+
+test('ask=none: someone who asked for space gets the day and the door, and no question at all', async () => {
+  const { sent, body, html } = await nudge('Rhythm: daily\nOrientation: space', AWAY_11_DAYS)
+  assert.equal(sent, true, 'still present — that is the whole point')
+  assert.ok(body.includes('Team standup'), 'the day is still there')
+  assert.ok(body.includes('Claude:'), 'the door is still open')
+  const [q1, q2] = dayQuestions('morning', '2026-07-15', 'return')
+  assert.ok(!body.includes(q1) && !body.includes(q2), 'but nothing is asked of them')
+  assert.ok(!html.includes(q1) && !html.includes(q2), 'in the HTML twin either')
+  assert.ok(!body.includes('Or answer these') && !body.includes('Or sit with this one'), 'no paste lead at all')
+  assert.ok(body.includes('No reply needed'), 'and it says so')
+})
+
+test('ask=light: one question, not two', async () => {
+  // 'gentle' yields by degrees: light at a week away, nothing past ten days. A
+  // seven-day gap is the rung where exactly one question is right.
+  const { body } = await nudge('Rhythm: daily\nOrientation: gentle', [reflectedOn('2026-07-08')])
+  const [q1, q2] = dayQuestions('morning', '2026-07-15', 'return')
+  assert.ok(body.includes(q1), 'the gentlest question is there')
+  assert.ok(!body.includes(q2), 'the second is not')
+  assert.ok(body.includes('Or sit with this one'), 'and the lead reads for one')
+})
+
+test('ask=full: reassure keeps BOTH questions however long they have been away', async () => {
+  // Constancy is the medicine here — thinning the ask is what reads as being
+  // given up on, which is the precise fear this orientation names.
+  const { body } = await nudge('Rhythm: daily\nOrientation: reassure', AWAY_30_DAYS)
+  const [q1, q2] = dayQuestions('morning', '2026-07-15', 'return')
+  assert.ok(body.includes(q1) && body.includes(q2), 'both questions, still')
+  assert.ok(body.includes("nothing's been lost"), 'and the opener says the non-contingent thing out loud')
+})
+
+test('the dormant weekly send names the thinning and carries the way back', async () => {
+  // 2026-07-12 is a Sunday, the default anchor; last reflection 2026-04-01.
+  const { sent, body } = await nudge('Rhythm: daily', [reflectedOn('2026-04-01')], '2026-07-12T07:00:00')
+  assert.equal(sent, true)
+  assert.ok(body.includes('once a week'), 'it says what it has done')
+  assert.ok(body.includes('picks straight back up'), 'and how to undo it')
+  const [q1] = dayQuestions('morning', '2026-07-12', 'return')
+  assert.ok(!body.includes(q1), 'asking nothing of someone this far away')
+})
+
+test('a person still showing up is untouched by any of this', async () => {
+  const { sent, body } = await nudge('Rhythm: daily\nOrientation: space', [reflectedOn('2026-07-14')])
+  assert.equal(sent, true)
+  const [q1, q2] = dayQuestions('morning', '2026-07-15', 'normal')
+  assert.ok(body.includes(q1) && body.includes(q2), 'full ask — they are not away')
+  assert.ok(!body.includes('No reply needed'), 'and no welcome-back opener')
 })

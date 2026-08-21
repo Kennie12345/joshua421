@@ -1,6 +1,14 @@
 node_modules/
+
+# Worker run logs — the record `npm run doctor` reads for "when did a nudge last go out?".
+# Operational, per-machine, and never content.
+logs/
 dist/
-.env
+# Every .env variant EXCEPT the committed template — a hand-made `.env.bak`, a
+# dated backup, `.env.local`: they all hold a live refresh token, and a plain
+# `.env` rule would have let any of them be committed.
+.env*
+!.env.example
 grounding.md
 *.sqlite
 *.sqlite-journal

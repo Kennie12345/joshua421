@@ -2,7 +2,6 @@ import type { Journal } from '../core/journal'
 import type { Log } from '../core/log'
 import type { Reflection } from '../core/reflection'
 import { marker } from '../core/journal'
-import { isoDay, shiftDay } from '../core/day'
 
 /**
  * The Log, stored in the user's own calendar — the calendar-as-database cutover
@@ -17,7 +16,7 @@ import { isoDay, shiftDay } from '../core/day'
  * cadence engine cannot (and should not) tell a morning reflection from an
  * evening one.
  */
-export function makeJournalLog(journal: Journal, clock: () => Date = () => new Date()): Log {
+export function makeJournalLog(journal: Journal): Log {
   return {
     async add(reflection: Reflection): Promise<void> {
       // Markers mean "they reflected". A 'skipped' record is nothing to
@@ -36,17 +35,6 @@ export function makeJournalLog(journal: Journal, clock: () => Date = () => new D
         kind: 'after' as const,
         status: 'shown-up' as const,
       }))
-    },
-
-    async streak(): Promise<number> {
-      const days = new Set((await journal.query({ kind: 'reflection' })).map((e) => e.date))
-      let count = 0
-      let cursor = isoDay(clock())
-      while (days.has(cursor)) {
-        count++
-        cursor = shiftDay(cursor, -1)
-      }
-      return count
     },
   }
 }

@@ -15,9 +15,6 @@ import type { Journal, JournalEntry, JournalQuery } from '../core/journal'
 const byDateDesc = <T extends { date: string }>(rows: T[]): T[] =>
   [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 
-const localDay = (d: Date): string =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
 /** A Log that keeps its rows in memory and exposes them for inspection. */
 export function makeMemoryLog(): Log & { readonly rows: Reflection[] } {
   const store: Reflection[] = []
@@ -30,16 +27,6 @@ export function makeMemoryLog(): Log & { readonly rows: Reflection[] } {
     },
     async reflections(since) {
       return byDateDesc(since === undefined ? store : store.filter((r) => r.date >= since))
-    },
-    async streak() {
-      const days = new Set(store.filter((r) => r.status === 'shown-up').map((r) => r.date))
-      let count = 0
-      const cursor = new Date()
-      while (days.has(localDay(cursor))) {
-        count++
-        cursor.setDate(cursor.getDate() - 1)
-      }
-      return count
     },
   }
 }

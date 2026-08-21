@@ -24,7 +24,7 @@ test('the reflections schema has no column that could hold content', () => {
   }
 })
 
-test('makeSqliteLog round-trips a reflection and counts a streak', async () => {
+test('makeSqliteLog round-trips a reflection', async () => {
   const log = makeSqliteLog(':memory:')
   const today = new Date()
   const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
@@ -35,5 +35,4 @@ test('makeSqliteLog round-trips a reflection and counts a streak', async () => {
   const all = await log.reflections()
   assert.equal(all.length, 1)
   assert.equal(all[0].id, 'r1')
-  assert.equal(await log.streak(), 1)
 })

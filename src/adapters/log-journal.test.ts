@@ -46,9 +46,3 @@ test('reflections() maps Markers back newest-first and honours since', async () 
   assert.deepEqual(recent.map((r) => r.date), ['2026-07-16', '2026-07-14'])
 })
 
-test('streak counts back from today through Marker days and stops at the first gap', async () => {
-  const journal = makeMemoryJournal()
-  const log = makeJournalLog(journal, () => new Date('2026-07-16T09:00:00'))
-  for (const date of ['2026-07-16', '2026-07-15', '2026-07-14', '2026-07-12']) await log.add(reflected(date))
-  assert.equal(await log.streak(), 3, 'the 13th is missing, so the run is 16-15-14')
-})

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { COMPANION_INSTRUCTIONS, INDUCTION, dayQuestions } from './persona'
+import { COMPANION_INSTRUCTIONS, FIXED_CENTRE, INDUCTION, dayQuestions } from './persona'
 import { parseCadence } from './cadence'
 
 /**
@@ -106,7 +106,16 @@ test('the persona knows the longer horizons and the exit off the screen', () => 
     /toward a person|a named human|someone to sit with/i.test(COMPANION_INSTRUCTIONS),
     'the send-off can hand them to a person, not only inward',
   )
-  assert.ok(!/\bstreak\b/i.test(COMPANION_INSTRUCTIONS.replace(/don't break your streak|"streak"/gi, '')),
+  // Two sanctioned mentions, both of which say NOT to: the negative exemplar, and
+  // the ADR 0001 know-everything-say-little clause. Stripping exactly those keeps
+  // the guard sharp — any new bare use of the word still fails here.
+  assert.ok(
+    !/\bstreak\b/i.test(
+      COMPANION_INSTRUCTIONS.replace(
+        /don't break your streak|"streak"|never surface a count, a rate, a streak, or a gap/gi,
+        '',
+      ),
+    ),
     'streaks appear only inside the negative exemplars, never as guidance')
 })
 
@@ -176,4 +185,46 @@ test('an ordinary day still gets the full bank, self-examination included', () =
     [...asked].some((q) => /went wrong/i.test(q)),
     'an ordinary evening should still ask what went wrong',
   )
+})
+
+/**
+ * ADR 0001 required this in so many words — "the companion never surfaces a
+ * count, a rate, or a streak, and `FIXED_CENTRE` must carry the
+ * know-everything-say-little line" — and it was never written. The ADR's own
+ * safety margin ("mcp.ts never reads the Log … an accident of wiring, not a
+ * design") expired when look_back began returning `reflectedDays` to the model,
+ * leaving the anti-scorecard guarantee resting on one sentence inside one tool
+ * description. This is the test the ADR asked for.
+ */
+test('the know-everything-say-little rule is carried where the model acts', () => {
+  for (const [name, text] of [
+    ['FIXED_CENTRE', FIXED_CENTRE],
+    ['COMPANION_INSTRUCTIONS', COMPANION_INSTRUCTIONS],
+  ] as const) {
+    assert.match(text, /know everything, say almost none of it/i, `${name} must carry the rule`)
+    assert.match(text, /never surface a count/i, `${name} must forbid surfacing a count`)
+  }
+})
+
+test('the induction asks how they want to be met on the way back — and never guesses', () => {
+  assert.match(INDUCTION, /coming back|been away/i, 'the question is asked')
+  for (const word of ['steady', 'reassure', 'space', 'gentle']) {
+    assert.ok(INDUCTION.includes(`Orientation: ${word}`), `the induction names Orientation: ${word}`)
+  }
+  assert.match(INDUCTION, /never infer it|leave the line out/i, 'and an unanswered question is left unset, not guessed')
+})
+
+/**
+ * The induction↔cadence contract, extended to the third machine-readable line:
+ * every Orientation word the induction tells an assistant to write must be one
+ * parseCadence actually honours. A word only the induction knows is a silent no-op.
+ */
+test('every Orientation word the induction offers is one the cadence engine honours', () => {
+  for (const word of ['steady', 'reassure', 'space', 'gentle']) {
+    assert.equal(
+      parseCadence(`Orientation: ${word}`).orientation,
+      word,
+      `the induction offers "${word}" — parseCadence must read it back`,
+    )
+  }
 })

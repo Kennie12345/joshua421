@@ -39,7 +39,7 @@ the write-surface.
 ## Context signals
 
 Every available signal is assembled into the prompt, so new ones slot in without
-re-architecting: orientation (goals, language, tone) · weekly rhythm and day of
+re-architecting: their intention, language and tone · weekly rhythm and day of
 week · church day + time (→ the post-church prompt: *"what did you take from
 church, and how do you want it to shape the week?"*) · a quiet-time slot, if they
 keep one · yesterday's end-of-day summary · today's calendar events.
@@ -64,7 +64,7 @@ you to your LLM to do the actual shaping.
 
 ## Grounding
 
-A user-owned capture of goals, language, tone, rhythm, church day/time — one
+A user-owned capture of intention, language, tone, rhythm, church day/time — one
 entry in your own calendar, still editable by hand (the entry's description
 *is* the document). It grounds both the diary entries and the conversation —
 the **one** piece of content joshua421 keeps, by your explicit choice, because

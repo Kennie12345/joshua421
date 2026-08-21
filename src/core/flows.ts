@@ -3,7 +3,13 @@ import type { Deps, DayEvent } from './deps'
 import type { Reflection } from './reflection'
 import { companionFrame, dayQuestions, INDUCTION } from './persona'
 import { isoDay, shiftDay } from './day'
-import { parseCadence, decideCadence, type CadenceTone } from './cadence'
+import {
+  parseCadence,
+  decideCadence,
+  type CadenceTone,
+  type AskWeight,
+  type Orientation,
+} from './cadence'
 import { periodFor, periodRange, rollupTitle, type RollupLevel } from './rollup'
 
 /**
@@ -191,14 +197,38 @@ function htmlLines(s: string): string {
 }
 
 /**
- * A gentle opening line set by the cadence tone — grace, never guilt. 'return'
- * welcomes someone back after a gap; 'light' acknowledges they've already sat with
- * today. 'normal' opens with nothing extra. (See core/cadence.ts.)
+ * The opening line — grace, never guilt, and shaped by what THEY said helps on the
+ * way back (ADR 0007). None of these counts the days, names a gap as a lapse, or
+ * asks them to account for it. The differences are real and deliberate:
+ *
+ *  - 'reassure' must say the non-contingent thing OUT LOUD — nothing lost, nothing
+ *    to make up — because the fear is that the gap cost them something.
+ *  - 'space' must not invite at all. It states that the day is there and that no
+ *    reply is wanted; being asked for is itself the demand.
+ *  - 'dormant' is the one line that names the thinning, because a change in
+ *    presence the person didn't ask for should never be silent — and it carries
+ *    the way back in the same breath.
  */
-function toneOpener(tone: CadenceTone): string | null {
-  if (tone === 'return') return "It's been a little while — there's no clock on this. When you're ready:"
+function toneOpener(
+  tone: CadenceTone,
+  orientation: Orientation = 'steady',
+  dormant = false,
+): string | null {
+  if (dormant) {
+    return "I've eased back to once a week for now — no reason needed from you. Reflect any day you like and the usual rhythm picks straight back up."
+  }
   if (tone === 'light') return "You've already sat with today — no need to do it twice. But if something's still with you:"
-  return null
+  if (tone !== 'return') return null
+  switch (orientation) {
+    case 'reassure':
+      return "Nothing's changed here, and nothing's been lost. Today is waiting for you exactly as it is:"
+    case 'space':
+      return 'Your day, if you want it. No reply needed.'
+    case 'gentle':
+      return "No hurry, and nothing to catch up on — here's today, whenever you want it:"
+    default:
+      return "It's been a little while — there's no clock on this. When you're ready:"
+  }
 }
 
 // An honest way to turn the volume down. The true one-tap "less often" link needs a
@@ -260,11 +290,20 @@ function excerpt(text: string, max = 400): string {
 export async function composeDayEmail(
   kind: 'morning' | 'evening',
   deps: Deps,
-  opts: { tone?: CadenceTone; church?: boolean } = {},
+  opts: {
+    tone?: CadenceTone
+    church?: boolean
+    /** How much to ask of them. See core/cadence.ts — silence moves this, never the send. */
+    ask?: AskWeight
+    orientation?: Orientation
+    /** The weekly anchor sent to someone long dormant; the opener names it. */
+    dormant?: boolean
+  } = {},
 ): Promise<void> {
   const tone = opts.tone ?? 'normal'
+  const ask = opts.ask ?? 'full'
   const church = (opts.church ?? false) && kind === 'evening'
-  const opener = toneOpener(tone)
+  const opener = toneOpener(tone, opts.orientation, opts.dormant)
   // Host-zone boundary: "today" here (and day()'s query window behind it) is
   // the HOST's local day — correct while the worker runs on the user's own
   // machine (launchd), where host zone == user zone. Moving the worker to a
@@ -293,7 +332,13 @@ export async function composeDayEmail(
   const claudeLink = claudeDoor(starter)
   // ChatGPT can't reach a local MCP at all, so this stays a reflect-only frame (the
   // user writes their own diary). Kept for cross-assistant reach.
-  const chatgptLink = `https://chatgpt.com/?q=${encodeURIComponent(starter)}`
+  //
+  // It carries the FRAME ONLY — never the day list. chatgpt.com reads its prompt
+  // from `?q=`, a QUERY string, which unlike the Claude door's fragment IS sent to
+  // the server and written into browser history. The same reasoning that keeps
+  // yesterday's summary out of both URLs keeps the day's event titles out of this
+  // one; the person describes their own day on the other side.
+  const chatgptLink = `https://chatgpt.com/?q=${encodeURIComponent(companionFrame(kind, { church }))}`
 
   // The paste path is its own way in, not a fallback copy of the link prompt:
   // two questions (rotated by date — see dayQuestions) the user answers in their
@@ -302,9 +347,18 @@ export async function composeDayEmail(
   // sit three lines under the opener, so a welcome-back that then asks what went
   // wrong is an accusation regardless of how the opener reads. On the church
   // evening the bank is the post-church one — the week's anchor at full weight.
+  //
+  // `ask` is the axis silence moves (ADR 0007): 'full' offers both questions,
+  // 'light' offers the gentlest one alone, and 'none' offers no question at all —
+  // the day, the door, and nothing required. An email that asks nothing is not a
+  // lesser email; for someone who reads being asked-for as a demand, it is the
+  // whole point, and it still arrives on time.
   const [q1, q2] = dayQuestions(kind, today, tone, church)
+  const questions = ask === 'none' ? [] : ask === 'light' ? [q1] : [q1, q2]
   const pasteLead =
-    'Or answer these yourself — then paste question and answer into any assistant to go deeper, or keep them in your diary:'
+    questions.length > 1
+      ? 'Or answer these yourself — then paste question and answer into any assistant to go deeper, or keep them in your diary:'
+      : 'Or sit with this one yourself — keep it in your diary, or paste it into any assistant to go deeper:'
 
   // Yesterday's summary, read back in THEIR words — the memorial, felt daily.
   // Never a scorecard: it appears when there is something to read back, and is
@@ -323,10 +377,7 @@ export async function composeDayEmail(
     `  Claude:  ${claudeLink}`,
     `  ChatGPT: ${chatgptLink}`,
     '',
-    pasteLead,
-    `  • ${q1}`,
-    `  • ${q2}`,
-    '',
+    ...(questions.length ? [pasteLead, ...questions.map((q) => `  • ${q}`), ''] : []),
     LESS_OFTEN,
   ].join('\n')
 
@@ -346,8 +397,12 @@ export async function composeDayEmail(
     '<p>Reflect now — talk it through with your assistant:<br>',
     `<a href="${claudeLink}">Reflect with Claude&nbsp;→</a><br>`,
     `<a href="${chatgptLink}">Reflect with ChatGPT&nbsp;→</a></p>`,
-    `<p style="color:#666">${escapeHtml(pasteLead)}</p>`,
-    `<p style="color:#666">• ${escapeHtml(q1)}<br>• ${escapeHtml(q2)}</p>`,
+    ...(questions.length
+      ? [
+          `<p style="color:#666">${escapeHtml(pasteLead)}</p>`,
+          `<p style="color:#666">${questions.map((q) => `• ${escapeHtml(q)}`).join('<br>')}</p>`,
+        ]
+      : []),
     `<p style="color:#999;font-size:0.85em">${escapeHtml(LESS_OFTEN)}</p>`,
     '</div>',
   ].join('\n')
@@ -432,7 +487,13 @@ export async function sendDailyNudge(
   // the decision's reason) because an already-reflected church evening still
   // deserves the post-church frame — its reason is 'already-reflected'.
   const church = kind === 'evening' && cadence.churchDay === now.getDay()
-  await composeDayEmail(kind, deps, { tone: decision.tone, church })
+  await composeDayEmail(kind, deps, {
+    tone: decision.tone,
+    church,
+    ask: decision.ask,
+    ...(cadence.orientation ? { orientation: cadence.orientation } : {}),
+    dormant: decision.dormant,
+  })
   return { sent: true, reason: decision.reason }
 }
 

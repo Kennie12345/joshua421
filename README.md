@@ -21,16 +21,60 @@ it helps you reflect and set the day up for the Lord → with your **approval**
 it writes notes into your calendar → joshua421 records *that* you reflected,
 never *what* you said.
 
-Four promises: **behaviour, not content** (a reflected day is one empty Marker
-entry in *your* calendar — joshua421 itself stores nothing at all; your
-grounding is the one piece of content kept, also in your calendar, by your
-choice) · **additive** (never rewriting or deleting your words) · **permission
-at the boundary** (nothing written without your approval, in chat) · **grace,
-not guilt** (a memorial to God's faithfulness, not a scorecard).
+Four promises: **behaviour, not content** (joshua421 itself stores nothing at
+all — no server, no database, nothing on your machine. A reflected day is one
+empty Marker entry; anything with words in it — a note, a day summary, a rollup,
+your grounding — is written only where you approved it, in *your* calendar, as
+private as your calendar is) · **additive** (never rewriting or deleting your
+words) · **permission at the boundary** (nothing written without your approval,
+in chat — held by the companion's instructions today, not yet by the protocol) ·
+**grace, not guilt** (a memorial to God's faithfulness, not a scorecard).
+
+**Presence holds; the ask scales.** A quiet stretch changes how much the nudge
+asks of you — never whether it arrives. How you want to be met on the way back is
+something *you* name once, in plain words; nothing is ever inferred from how you
+behave. → [ADR 0006](./docs/adr/0006-presence-holds-the-ask-scales.md)
 
 joshua421 makes **no model calls of its own** — you bring whichever assistant
 you like, so no LLM key is needed. → [docs/design.md](./docs/design.md) has the
 full vision and privacy model.
+
+## How you use it
+
+You never call joshua421 directly. You talk to your assistant; the assistant
+calls the tools.
+
+**Once.** `npm run setup` connects joshua421 to your assistant. Then run the
+**`begin`** prompt (in your client's prompt picker): a gentle conversation that
+establishes your intention, tone, weekly rhythm, church day and quiet time, and
+saves them with `set_grounding` — as one entry in your own calendar, still
+yours to edit by hand.
+
+**Each day.** A nudge email arrives — morning setup, evening summary — the
+morning one carrying yesterday's summary back to you in your own words. It
+offers two ways in: a link that opens the conversation already prefilled (into
+Claude Desktop, where the MCP is connected and your diary can be written; the
+ChatGPT link reflects with you but writes nothing), or two questions you can
+paste into any assistant. In the conversation, yours reads your grounding
+(`get_grounding`) and your day (`read_day`) and reflects with you on *this*
+day — your actual events, your own words. When something is worth keeping it
+drafts it, you approve it, and `apply_day_notes` writes it: appended under a
+marker inside the event, or as a private side-entry in the same slot when the
+event is shared, so a reflection of yours never lands on someone else's invite.
+Every write is reversible — `undo_write` strips only joshua421's block from
+your event, or deletes an entry joshua421 created; your real meetings are
+structurally out of reach.
+
+**Now and then.** On your church evening, at a month or season genuinely
+turning, or whenever you ask: `look_back` gathers that period's stones — the
+days you showed up, the summaries you kept, the rollups already written — and
+your assistant weaves the memorial with you: *look how faithful God has been.*
+If it lands somewhere true, `save_rollup` keeps it as that period's own entry.
+"Your year with God" is the headline stone.
+
+That is the whole surface: one setup, an email, a conversation. Everything
+written lands in your calendar; joshua421 keeps only *that* you reflected — and
+your grounding, by your choice.
 
 ## Run it
 

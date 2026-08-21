@@ -1,16 +1,22 @@
 /**
- * Cadence that breathes — decide WHETHER (and how gently) to send a daily nudge,
- * so the rhythm responds to the person instead of nagging on a fixed clock.
+ * Cadence that breathes — decide WHETHER, how gently, and how MUCH to ask, so the
+ * rhythm responds to the person instead of nagging on a fixed clock.
  *
- * Two firm choices shape this:
+ * Three firm choices shape this:
  *  - It is PURE and deterministic — the worker calls no model (provider-agnostic).
  *  - "Unopened" is proxied by SILENCE IN THE LOG (days since the last reflection),
  *    never by tracking whether an email was opened — open-tracking is manipulative
- *    and against "toward God, not the screen". The longer the silence, the gentler
- *    and more spacious the welcome back, and the less often we send. Never guiltier.
+ *    and against "toward God, not the screen".
+ *  - PRESENCE HOLDS; THE ASK SCALES. Silence changes the WEIGHT of what the nudge
+ *    asks of them, never whether it comes. See ADR 0006 (the secure base). The
+ *    earlier design had this backwards — it kept the ask constant and withdrew the
+ *    presence, so a person who went quiet for eleven days was dropped to a weekly
+ *    email forever, with no way back that didn't require the very reflection the
+ *    email was supposed to prompt. A companion that goes quiet when someone drifts
+ *    is not being gentle; it is being absent (glossary.md).
  *
  * The worker (launchd) still owns the clock (07:00 / 20:00). Cadence owns which
- * days, which kinds, and the tone — the ceiling fires, this decides if we speak.
+ * days, which kinds, the tone, and the weight of the ask.
  */
 import type { Reflection } from './reflection'
 import { isoDay, daysBetween } from './day'
@@ -19,24 +25,75 @@ import { isoDay, daysBetween } from './day'
  *  'light' = they already reflected today, so acknowledge it and stay out of the way. */
 export type CadenceTone = 'normal' | 'return' | 'light'
 
+/**
+ * How much the nudge asks of them — the axis that carries silence.
+ *
+ *  'full'  the usual two questions
+ *  'light' one question, the gentlest in the bank
+ *  'none'  no question at all: the day, the door, nothing required of them
+ *
+ * 'none' is not a lesser email. It is the light left on in the hall — the whole
+ * point being that it arrives on time, asks nothing, and needs no reply.
+ */
+export type AskWeight = 'full' | 'light' | 'none'
+
+/**
+ * What this person has SAID helps when they have been away — never what joshua421
+ * has deduced about them (ADR 0002: no inferred profile; ADR 0006: the secure base).
+ * Named in the `begin` conversation, kept in their grounding, editable by hand.
+ *
+ *  'steady'    a gap is just a busy week. Normal warmth, unremarkable return.
+ *  'reassure'  a gap feels like ground lost. CONSTANCY is the medicine: keep the
+ *              full ask, and let the opener carry the non-contingency — nothing
+ *              changed, nothing to make up. Shrinking the ask would read as
+ *              "it gave up on me", which is the exact wound.
+ *  'space'     being asked for reads as a demand. Hold the presence, drop the ask
+ *              to nothing: the door stays visibly open and no reply is expected.
+ *  'gentle'    both at once — maximum predictability, minimum demand.
+ */
+export type Orientation = 'steady' | 'reassure' | 'space' | 'gentle'
+
 /** The user's rhythm, parsed from their grounding (or defaults). Days: 0=Sun..6=Sat. */
 export interface Cadence {
   morning: boolean
   evening: boolean
   days: 'daily' | ReadonlySet<number>
   churchDay?: number
+  /** Absent when they have never said. Never guessed — read as 'steady'. */
+  orientation?: Orientation
 }
 
 export interface CadenceDecision {
   send: boolean
   tone: CadenceTone
+  /** How much to ask of them — the axis silence moves. Meaningless when !send. */
+  ask: AskWeight
+  /**
+   * This send is the thinned weekly touch of a dormant stretch, and the email
+   * must SAY so (ADR 0006: a change in presence the person did not ask for is
+   * never silent).
+   *
+   * An explicit flag, not something the caller infers from `reason` — inferring
+   * it from `reason === 'dormant-weekly'` silently excluded every user with a
+   * church day, because their weekly send comes through the church-day branch
+   * and keeps that reason. They thinned from daily to weekly and were never told.
+   */
+  dormant: boolean
   /** Why — for the worker's log line and for tests. */
   reason: string
 }
 
 // Silence thresholds (whole days since the last reflection). Named + tunable.
-const GENTLE_AFTER_DAYS = 4 // >= this: still send, but with a 'return' welcome-back
-const RESTING_AFTER_DAYS = 10 // > this: deep backoff — send at most weekly, on the anchor day
+const GENTLE_AFTER_DAYS = 4 // >= this: a 'return' welcome-back, and the ask starts to yield
+const HEAVY_SILENCE_DAYS = 10 // > this: the ask yields as far as their orientation wants
+/**
+ * > this: dormant. Two months of daily mail with no reflection is not a secure
+ * base any more, it is post. So the presence thins to the weekly anchor — but,
+ * unlike the old backoff, that send SAYS SO and carries the way back, and one
+ * reflection restores the full rhythm immediately (silence resets to 0). Set far
+ * enough out that no one who is actually still here can fall through it.
+ */
+const DORMANT_AFTER_DAYS = 60
 const ANCHOR_DAY = 0 // Sunday — the weekly touch-point when no church day is set
 
 const DAY_NAMES: Record<string, number> = {
@@ -65,7 +122,7 @@ const DEFAULT_CADENCE: Cadence = { morning: true, evening: true, days: 'daily' }
  * being mistaken for the start of a new block.
  */
 const SECTION_LABEL =
-  /^\s*(goals?|tone|language|rhythm|regularity|cadence|church|quiet[\s-]?time|reading\s+plan|rule|preferences|orientation)\b[\sa-z&/-]{0,20}$/i
+  /^\s*(intentions?|goals?|tone|language|rhythm|regularity|cadence|church|quiet[\s-]?time|reading\s+plan|rule|preferences|orientation|coming\s+back|being\s+away)\b[\sa-z&/-]{0,20}$/i
 
 /**
  * Pull the text of a labelled section out of the freeform grounding doc, tolerant
@@ -119,7 +176,8 @@ function sectionText(doc: string, label: RegExp): string | null {
  * Parse a Cadence from the grounding doc. Missing/unparseable → sensible default
  * (both kinds, daily), so the feature degrades safe and never silently stops the
  * nudges. The canonical lines an assistant should write are `Rhythm: <daily |
- * weekdays | weekends | weekly | mornings only | evenings only>` and `Church: <day>`.
+ * weekdays | weekends | weekly | mornings only | evenings only>`, `Church: <day>`,
+ * and `Orientation: <steady | reassure | space | gentle>`.
  */
 export function parseCadence(grounding: string | null): Cadence {
   if (!grounding) return DEFAULT_CADENCE
@@ -133,8 +191,10 @@ export function parseCadence(grounding: string | null): Cadence {
     }
   }
 
+  const orientation = parseOrientation(grounding)
+
   const rhythm = sectionText(grounding, /^\s*#{0,6}\s*\**\s*(rhythm|regularity|cadence)\b/im)
-  if (rhythm === null) return { ...DEFAULT_CADENCE, churchDay }
+  if (rhythm === null) return { ...DEFAULT_CADENCE, churchDay, ...(orientation ? { orientation } : {}) }
 
   // Kinds — only from the rhythm section, so goal-prose can't toggle them.
   let morning = true
@@ -152,13 +212,56 @@ export function parseCadence(grounding: string | null): Cadence {
   else if (/\bweekly\b/.test(rhythm)) days = new Set([churchDay ?? ANCHOR_DAY])
   // else stays 'daily' (explicit "daily"/"every day", or nothing recognised)
 
-  return { morning, evening, days, churchDay }
+  return { morning, evening, days, churchDay, ...(orientation ? { orientation } : {}) }
 }
 
 /**
- * Decide whether — and how gently — to send the `kind` nudge right now. Ordering
- * matters: kind-off, then already-reflected (soften), then church (never suppress),
- * then silence-driven backoff, then the ordinary weekday schedule.
+ * Read what they SAID helps on the way back. Scoped to its own section — a goal
+ * that happens to say "I need space to think" must never become a standing
+ * instruction to ask them nothing. Unrecognised or absent → undefined, read as
+ * 'steady'. Never guessed from behaviour (ADR 0002).
+ */
+function parseOrientation(grounding: string): Orientation | undefined {
+  const text = sectionText(grounding, /^\s*#{0,6}\s*\**\s*(orientation|coming\s+back|being\s+away)\b/im)
+  if (!text) return undefined
+  // Canonical word first; then the plain phrasings a person actually writes.
+  if (/\bgentle\b|\bboth\b/.test(text)) return 'gentle'
+  if (/\bspace\b|\broom\b|\bno\s+questions?\b|\bleave\s+me\b|\bdon'?t\s+chase\b/.test(text)) return 'space'
+  if (/\breassure\b|\bnothing\s+(has\s+)?changed\b|\bas\s+i\s+left\s+(it|them)\b|\bstill\s+there\b/.test(text))
+    return 'reassure'
+  if (/\bsteady\b|\bnormal\b|\bas\s+usual\b/.test(text)) return 'steady'
+  return undefined
+}
+
+/**
+ * How much to ask of someone who has been away this long, given what they said
+ * helps. PURE, and the whole of the silence response — presence itself is never
+ * on this table (see decideCadence).
+ */
+function askWeight(silence: number, orientation: Orientation): AskWeight {
+  if (silence < GENTLE_AFTER_DAYS) return 'full'
+  const heavy = silence > HEAVY_SILENCE_DAYS
+  switch (orientation) {
+    // Constancy IS the reassurance. Never thin the ask — that reads as being
+    // given up on, which is the precise fear. The opener carries the grace.
+    case 'reassure':
+      return 'full'
+    // Being asked for is the demand. Presence without a single question.
+    case 'space':
+      return 'none'
+    case 'gentle':
+      return heavy ? 'none' : 'light'
+    case 'steady':
+    default:
+      return heavy ? 'light' : 'full'
+  }
+}
+
+/**
+ * Decide whether — and how gently, and how much to ask. Ordering matters:
+ * kind-off, then already-reflected (soften), then church (never suppress), then
+ * dormancy (the one place presence thins, and it says so), then the ordinary
+ * schedule with the ask weighted by silence and orientation.
  *
  * `reflections` is the Log, newest first. Cold start (empty log) is treated as a
  * fresh, present user — normal cadence — never as infinite silence.
@@ -170,40 +273,51 @@ export function decideCadence(input: {
   reflections: Reflection[]
 }): CadenceDecision {
   const { kind, now, cadence, reflections } = input
+  const orientation = cadence.orientation ?? 'steady'
 
-  if (kind === 'morning' && !cadence.morning) return { send: false, tone: 'normal', reason: 'kind-off' }
-  if (kind === 'evening' && !cadence.evening) return { send: false, tone: 'normal', reason: 'kind-off' }
+  if (kind === 'morning' && !cadence.morning)
+    return { send: false, tone: 'normal', ask: 'full', dormant: false, reason: 'kind-off' }
+  if (kind === 'evening' && !cadence.evening)
+    return { send: false, tone: 'normal', ask: 'full', dormant: false, reason: 'kind-off' }
 
   const today = isoDay(now)
   const weekday = now.getDay()
 
   // Silence: whole days since the most recent reflection. Cold start (never
-  // reflected) is a present new user, not deep silence → 0. (Under calendar-as-DB
-  // this wants a bounded "most recent" query; the SQLite Log is cheap today.)
+  // reflected) is a present new user, not deep silence → 0.
   const silence = reflections.length ? daysBetween(reflections[0].date, today) : 0
   const tone: CadenceTone = silence >= GENTLE_AFTER_DAYS ? 'return' : 'normal'
+  const dormant = silence > DORMANT_AFTER_DAYS
+  // A dormant stretch's single weekly touch asks nothing, whichever branch sends
+  // it — the anchor day or the church day.
+  const ask = dormant ? 'none' : askWeight(silence, orientation)
 
   // Already reflected today → soften rather than skip. The Log records every
   // reflection as 'after', so it can't tell a morning reflection from an evening
   // one; a hard skip would cut off the evening look-back for a morning-devotions
   // person. So we still send, lightly, acknowledging they've already shown up.
   if (kind === 'evening' && reflections.some((r) => r.date === today)) {
-    return { send: true, tone: 'light', reason: 'already-reflected' }
+    return { send: true, tone: 'light', ask: 'light', dormant: false, reason: 'already-reflected' }
   }
 
   // Church day is never suppressed — the week's highest-leverage reorientation.
-  if (cadence.churchDay === weekday) return { send: true, tone, reason: 'church-day' }
+  // When the person is also dormant, THIS is the weekly touch, so it carries the
+  // dormancy flag: the email says what has changed and how to undo it.
+  if (cadence.churchDay === weekday) {
+    return { send: true, tone: dormant ? 'return' : tone, ask, dormant, reason: 'church-day' }
+  }
 
-  // Deep backoff: after a long silence, fall to at most weekly (the anchor/church
-  // day), gently. Every other day rests. Kills the "unopened guilt pile".
-  if (silence > RESTING_AFTER_DAYS) {
+  // Dormant: the ONLY place presence thins, and only after two months of daily
+  // mail meeting silence. The weekly send names it and carries the way back; a
+  // single reflection resets silence to 0 and the full rhythm resumes at once.
+  if (dormant) {
     const anchor = cadence.churchDay ?? ANCHOR_DAY
     return weekday === anchor
-      ? { send: true, tone: 'return', reason: 'weekly-return' }
-      : { send: false, tone: 'return', reason: 'resting' }
+      ? { send: true, tone: 'return', ask: 'none', dormant: true, reason: 'dormant-weekly' }
+      : { send: false, tone: 'return', ask: 'none', dormant: true, reason: 'dormant' }
   }
 
   const scheduled = cadence.days === 'daily' || cadence.days.has(weekday)
-  if (!scheduled) return { send: false, tone, reason: 'off-day' }
-  return { send: true, tone, reason: tone === 'return' ? 'gentle-return' : 'normal' }
+  if (!scheduled) return { send: false, tone, ask, dormant: false, reason: 'off-day' }
+  return { send: true, tone, ask, dormant: false, reason: tone === 'return' ? 'gentle-return' : 'normal' }
 }

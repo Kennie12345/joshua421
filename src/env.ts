@@ -13,15 +13,15 @@ import dotenv from 'dotenv'
  * MCP stdio channel.
  */
 const here = dirname(fileURLToPath(import.meta.url)) // .../src
-const repoRoot = join(here, '..')
+export const REPO_ROOT = join(here, '..')
 
-dotenv.config({ path: join(repoRoot, '.env'), quiet: true })
+dotenv.config({ path: join(REPO_ROOT, '.env'), quiet: true })
 
 // Pin the LEGACY local stores to absolute paths so `npm run migrate` (and the
 // pre-cutover fallback checks) find them regardless of cwd. Since the
 // calendar-as-database cutover these are migration sources, not live stores.
 const db = process.env.JOSHUA421_DB ?? 'joshua421.sqlite'
-process.env.JOSHUA421_DB = isAbsolute(db) ? db : join(repoRoot, db)
+process.env.JOSHUA421_DB = isAbsolute(db) ? db : join(REPO_ROOT, db)
 
 const grounding = process.env.GROUNDING_PATH ?? 'grounding.md'
-process.env.GROUNDING_PATH = isAbsolute(grounding) ? grounding : join(repoRoot, grounding)
+process.env.GROUNDING_PATH = isAbsolute(grounding) ? grounding : join(REPO_ROOT, grounding)

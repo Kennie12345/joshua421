@@ -22,11 +22,11 @@ The vision is [design.md](./design.md); this page tracks the build against it.
   delete — real events are structurally out of reach.
 - **The calendar IS the database** — the cutover is done. Markers (reflected
   days, empty-body by construction), day summaries, rollups, side entries and
-  the preferences all live in the user's own calendar behind the one Journal
+  the grounding all live in the user's own calendar behind the one Journal
   seam (upsert-only per ADR 0005). No SQLite file, no grounding file, no
   per-user store to ever host: "we store nothing at all." `npm run migrate`
   moves a pre-cutover machine across once (idempotent; never clobbers
-  preferences already saved through the conversation).
+  a grounding already saved through the conversation).
 - **Worker** — two daily nudge emails with two ways in: deep links (an https
   page that bounces into Claude Desktop, where the MCP is present to write the
   diary, plus a ChatGPT reflect-only link) and a paste path of two date-rotated
@@ -36,12 +36,22 @@ The vision is [design.md](./design.md); this page tracks the build against it.
   wall-clock, never bare UTC. The **morning email reads back yesterday's kept
   summary** — their own words, the memorial felt daily.
 - **Cadence that breathes** (`core/cadence.ts`) — nudges follow the person, not
-  the clock. Rhythm is parsed from grounding (`Rhythm:` / `Church:` lines);
-  silence is read from the Log (days since the last reflection — never
-  email-open tracking). A short gap gets a gentle welcome-back; a long silence
-  falls back to a weekly touch on the church/anchor day; an already-reflected
-  day is softened, not skipped; the church day is never suppressed. Grace, not
-  guilt — asserted by test.
+  the clock. Rhythm is parsed from grounding (`Rhythm:` / `Church:` /
+  `Orientation:` lines); silence is read from the Log (days since the last
+  reflection — never email-open tracking). **Presence holds; the ask scales**
+  ([ADR 0006](./adr/0006-presence-holds-the-ask-scales.md)): silence changes how
+  much the email asks of them (`ask: full | light | none`), never whether it
+  comes. How they want to be met on the way back is what THEY said, kept as
+  `Orientation: steady | reassure | space | gentle` and never inferred (ADR
+  0002); `reassure` deliberately keeps the full ask at any depth, because
+  thinning it is what reads as being given up on. An already-reflected day is
+  softened, not skipped; the church day is never suppressed. The one place
+  presence thins is a 60-day dormancy — which says so in the email, names the way
+  back, and is undone by a single reflection. Grace, not guilt — asserted by test.
+
+  *This replaced a backoff that dropped to weekly after 11 days of silence with
+  no exit that didn't require the very reflection the missing email was meant to
+  prompt. Five weeks of dogfood: 74 scheduled jobs, 4 sent emails.*
 - **The church day carries the week** — on the church evening the nudge arrives
   at full post-church weight: its own frame (what I took from church, and how it
   shapes the week ahead), its own always-welcoming question bank, an honest
@@ -58,7 +68,7 @@ The vision is [design.md](./design.md); this page tracks the build against it.
   passage **pointed to** (a link, their own Bible), never dispensed. Every
   reflection ends in a named send-off — prayer, stillness, or a person the day
   surfaced. The screen is never the destination.
-- **Grounding** — the user's freeform preferences doc, now one calendar entry
+- **Grounding** — the user's own account, in their words, now one calendar entry
   they can still edit by hand; the live persona reads it and calibrates tone and
   directness.
 - **Onboarding / BYO-OAuth** — `npm run setup` ([setup.md](./setup.md)): every
@@ -99,6 +109,27 @@ The vision is [design.md](./design.md); this page tracks the build against it.
    while it runs on the user's own machine (launchd); it must become user-zone
    aware before the worker ever moves to a box in another zone. Documented at
    the boundary in code.
+5. **MCP `2026-07-28` (stateless core)** — nothing to do yet, and the design
+   already meets it: the spec requires that cross-request state be "referenced
+   by an explicit identifier the client passes on each request", which is what
+   the calendar-as-database does (date, eventId; the server holds nothing
+   between calls). Only HTTP+SSE is deprecated — **stdio is unaffected** — and
+   the spec has stdio servers take credentials from the environment, as `.env`
+   already does. Roots/Sampling/Logging are deprecated on a 12-month floor;
+   we use none.
+   *Trigger:* the TypeScript SDK actually shipping it. As of 2026-08-10 the
+   latest published `@modelcontextprotocol/sdk` (1.30.0) still has
+   `LATEST_PROTOCOL_VERSION = '2025-11-25'` and no `server/discover` — there is
+   no migration target. **The one thing to check when there is:** the persona
+   ships as the server's `instructions`, which rode in the now-removed
+   `initialize` result; under the new spec identity lives in `server/discover`,
+   which clients **MAY** skip calling. Confirm the persona still reaches the
+   host — if `instructions` become optional-to-fetch, `FIXED_CENTRE` in every
+   tool description stops being belt-and-braces and becomes the guarantee.
+   *Watching, not adopting:* **MRTR** (`resultType: "input_required"` → client
+   retries with `inputResponses`) could make Promise 3 protocol-enforced rather
+   than persona-enforced; **MCP Apps** could give the emails a real write
+   surface. Both gated on Claude client support.
 
 **Later:** more surfaces (habit / notes / reminder apps) — each a new `Diary`
 adapter.

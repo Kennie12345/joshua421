@@ -20,11 +20,21 @@ _Avoid_: Store, Database, Log (the Log is one use of the Journal, not a synonym)
 The person's own account of what they are asking God to grow in them and how they want to be met — in their words, editable by hand. The one piece of content joshua421 keeps, by their choice.
 _Avoid_: Preferences (implies settings), Profile, Config, Memory
 
+> The banned words are the ones the product keeps reaching for, because they are what a
+> stranger would say. Copy addressed to the person may **explain** a term — "what you're
+> asking God to grow in you, and how you want to be met" — but must not **rename** it.
+> Parsers are the exception: a person's own Grounding may well be headed "Goals", and the
+> cadence engine has to keep reading it.
+
 ### What the person names
 
 **Intention**:
 What the person is asking God to grow in them over a season, named by them, before God. A desire held — not a target hit, and not something joshua421 can score.
 _Avoid_: Goal (productivity-coded), Objective, Target, KPI
+
+**Orientation**:
+What the person says helps when they come back after a stretch away — steady, reassure, space, or gentle. Theirs to name, in their Grounding; never inferred from how they behaved.
+_Avoid_: Re-engagement style, Segment, Profile, Persona
 
 **Disclosure**:
 What the person tells the companion about their own practice. The only honest evidence joshua421 has about their walk — everything else it can observe is evidence about itself.
@@ -91,3 +101,18 @@ _Avoid_: Tone (broader), Intensity, Pressure
 **Rhythm**:
 The days and kinds of nudge the person asked for.
 _Avoid_: Schedule, Cadence, Frequency
+
+**Ask**:
+How much a nudge asks of the person — two questions, one, or none at all. The axis that carries Silence: the Ask scales, Presence holds.
+_Avoid_: Effort, Difficulty, Intensity (that is Gentleness), Engagement
+
+**Centre**:
+The commitments in the Companion that never bend — grace over guilt, the Word as plumb line, the particular over the generic, discerning rather than pronouncing. Delivery flexes to the person; the Centre does not.
+_Avoid_: Guardrails, Rules, Values (too broad), System prompt (that is where it ships, not what it is)
+
+**Practice**:
+A named shape a Reflection can take — an examen, a lament, a discernment, a memorial. The Companion loads one to know how that kind of conversation goes.
+_Avoid_: Skill (that is the file format a Practice ships in), Exercise, Template, Mode, Menu item
+
+> A Practice is loaded by the Companion, never offered to the person. The person is shown
+> two ways in, in plain words — the list of Practices is not a menu and is never read aloud.

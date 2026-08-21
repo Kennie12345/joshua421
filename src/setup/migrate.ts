@@ -9,7 +9,7 @@ import { isoDay } from '../core/day'
 import { makeFileGrounding } from '../adapters/grounding-file'
 import { makeGoogleJournal } from '../adapters/journal-google'
 import { makeJournalGrounding, PREFERENCES_PERIOD } from '../adapters/grounding-journal'
-import { makeSqliteLog } from '../adapters/log-sqlite'
+// NOTE: `../adapters/log-sqlite` is imported LAZILY, below. See openLegacyLog.
 
 /**
  * `npm run migrate` — the one-time cutover of the pre-Journal local stores into
@@ -53,6 +53,33 @@ export async function migrateToJournal(
   return { markerDays, grounding }
 }
 
+/**
+ * Open the pre-cutover SQLite log — the ONLY thing in joshua421 that needs
+ * `better-sqlite3`, a native module that must compile at install time.
+ *
+ * It is loaded here, on demand, rather than at the top of the file, so that a
+ * brand-new user never pays for it. They have no legacy database (there was
+ * nothing before their install), this function is never reached, and the
+ * dependency can stay optional — a failed or skipped native build costs them
+ * nothing instead of blocking `npm install` on a compiler toolchain.
+ *
+ * If it IS needed and IS missing, say so plainly: the fix is one command, and
+ * the legacy file is still sitting safely on disk either way.
+ */
+async function openLegacyLog(dbPath: string): Promise<Log> {
+  try {
+    const { makeSqliteLog } = await import('../adapters/log-sqlite')
+    return makeSqliteLog(dbPath)
+  } catch (err) {
+    throw new Error(
+      `found a pre-cutover log at ${dbPath}, but the SQLite reader could not load ` +
+        '(better-sqlite3 is an optional native dependency). Install it with ' +
+        '`npm install better-sqlite3`, then re-run `npm run migrate`. ' +
+        `Your file is untouched.\n  cause: ${err instanceof Error ? err.message : err}`,
+    )
+  }
+}
+
 /** The CLI run against the real legacy files and the real calendar Journal. */
 export async function runMigration(log = console.log): Promise<void> {
   const dbPath = process.env.JOSHUA421_DB ?? ''
@@ -66,7 +93,7 @@ export async function runMigration(log = console.log): Promise<void> {
 
   const result = await migrateToJournal(
     {
-      ...(hasDb ? { log: makeSqliteLog(dbPath) } : {}),
+      ...(hasDb ? { log: await openLegacyLog(dbPath) } : {}),
       ...(hasGrounding ? { grounding: makeFileGrounding(groundingPath) } : {}),
     },
     makeGoogleJournal(),

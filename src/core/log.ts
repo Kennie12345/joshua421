@@ -14,7 +14,4 @@ export interface Log {
 
   /** Reflections since an ISO date (inclusive), newest first. Omit for all. */
   reflections(since?: string): Promise<Reflection[]>
-
-  /** Current run of consecutive days with at least one 'shown-up' reflection. */
-  streak(): Promise<number>
 }
